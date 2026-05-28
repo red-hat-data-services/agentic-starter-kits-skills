@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "agentic-starter-kits-skills",
-      "source": ".",
+      "source": "./",
       "description": "Claude Code skills for agentic-starter-kits contributors."
     }
   ]

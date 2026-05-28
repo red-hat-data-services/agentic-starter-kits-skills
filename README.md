@@ -11,13 +11,6 @@ claude plugin marketplace add red-hat-data-services/agentic-starter-kits-skills
 claude plugin install agentic-starter-kits-skills@agentic-starter-kits-skills
 ```
 
-## Skills
-
-| Skill | Description |
-|-------|-------------|
-| `add-integration-tests` | Skill for adding integration tests to an agentic-starter-kits agent. |
-| `add-behavioral-tests` | Skill for adding behavioral tests to an agentic-starter-kits agent. |
-
 ## Contributing
 
 To add a new skill:
