@@ -1,0 +1,379 @@
+{
+  "agentic-starter-kits-skills:deploy-agents": {
+    "pre": {
+      "description": "Step 0: Validate deployment prerequisites",
+      "assertions": [
+        {
+          "id": "repo-root",
+          "type": "exec",
+          "command": "test -f AGENTS.md",
+          "on_fail": "warn",
+          "description": "Working directory is agentic-starter-kits repo root"
+        },
+        {
+          "id": "oc-auth",
+          "type": "exec",
+          "command": "oc whoami",
+          "on_fail": "block",
+          "description": "Authenticated to OpenShift cluster"
+        },
+        {
+          "id": "oc-namespace",
+          "type": "exec",
+          "command": "oc project -q",
+          "on_fail": "block",
+          "description": "Can resolve current OpenShift namespace"
+        },
+        {
+          "id": "helm-installed",
+          "type": "exec",
+          "command": "helm version --short",
+          "on_fail": "block",
+          "description": "Helm CLI is installed"
+        },
+        {
+          "id": "container-cli",
+          "type": "exec",
+          "command": "podman version 2>/dev/null || docker version 2>/dev/null",
+          "on_fail": "warn",
+          "description": "Container CLI available (podman or docker) -- required unless --token-only"
+        },
+        {
+          "id": "args-provided",
+          "type": "eval",
+          "description": "Skill arguments specify target agents or a mode flag",
+          "pass_if": "First argument is a framework/agent path (contains /), the word 'all', or the flag '--token-only'"
+        },
+        {
+          "id": "token-only-skip",
+          "type": "eval",
+          "description": "If --token-only mode, container-cli FAIL is acceptable",
+          "pass_if": "When --token-only is present, container-cli assertion failure should be treated as non-blocking"
+        }
+      ]
+    },
+    "gates": {
+      "step-1-resolve": {
+        "description": "Step 1: Target agents resolved and validated",
+        "assertions": [
+          {
+            "id": "agent-dirs-exist",
+            "type": "exec",
+            "command": "test -d agents/${AGENT_PATH}",
+            "on_fail": "warn",
+            "description": "Agent directory exists under agents/"
+          },
+          {
+            "id": "agent-yaml-exists",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/agent.yaml",
+            "on_fail": "warn",
+            "description": "agent.yaml exists in agent directory"
+          },
+          {
+            "id": "agent-makefile-exists",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/Makefile",
+            "on_fail": "warn",
+            "description": "Makefile exists in agent directory"
+          },
+          {
+            "id": "nonstandard-excluded",
+            "type": "eval",
+            "description": "Non-standard agents excluded from target list",
+            "pass_if": "langflow/simple_tool_calling_agent and a2a/langgraph_crewai_agent are NOT in the resolved target list. If 'all' was specified, they were filtered out with a warning."
+          },
+          {
+            "id": "target-list-reported",
+            "type": "eval",
+            "description": "Final agent list was shown to the user before proceeding",
+            "pass_if": "The resolved list of agents was printed/reported before any deployment actions began"
+          }
+        ]
+      },
+      "step-2-config": {
+        "description": "Step 2: Cluster config auto-detected from existing deployments",
+        "assertions": [
+          {
+            "id": "namespace-captured",
+            "type": "exec",
+            "command": "oc project -q",
+            "on_fail": "block",
+            "description": "Namespace is known and will be used with explicit -n flag"
+          },
+          {
+            "id": "deployments-queried",
+            "type": "eval",
+            "description": "Existing deployments were queried for config extraction",
+            "pass_if": "oc get deployments was run to discover existing agent deployments in the namespace"
+          },
+          {
+            "id": "config-extracted",
+            "type": "eval",
+            "description": "Required config values were extracted or prompted",
+            "pass_if": "BASE_URL, MODEL_ID, API_KEY, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME, MLFLOW_WORKSPACE, container registry prefix were all resolved -- either auto-detected from an existing deployment or explicitly requested from the user"
+          },
+          {
+            "id": "secrets-not-logged",
+            "type": "eval",
+            "description": "API_KEY and MLFLOW_TRACKING_TOKEN values were not displayed in output",
+            "pass_if": "Neither API_KEY nor MLFLOW_TRACKING_TOKEN plaintext values appear in any assistant message or tool output shown to the user"
+          }
+        ]
+      },
+      "step-3-deploy": {
+        "description": "Step 3: Agent build and deployment (per agent)",
+        "assertions": [
+          {
+            "id": "existing-deployment-check",
+            "type": "eval",
+            "description": "Checked for existing deployment before deploying",
+            "pass_if": "For each target agent, oc get deployment was run to check if it already exists. If it exists, user was asked whether to redeploy or skip."
+          },
+          {
+            "id": "env-file-written",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/.env",
+            "on_fail": "warn",
+            "description": ".env file was written in agent directory"
+          },
+          {
+            "id": "env-has-mlflow-workspace",
+            "type": "exec",
+            "command": "grep -q 'MLFLOW_WORKSPACE=' agents/${AGENT_PATH}/.env",
+            "on_fail": "warn",
+            "description": ".env includes MLFLOW_WORKSPACE (mandatory for OpenShift MLflow)"
+          },
+          {
+            "id": "env-has-insecure-tls",
+            "type": "exec",
+            "command": "grep -q 'MLFLOW_TRACKING_INSECURE_TLS=true' agents/${AGENT_PATH}/.env",
+            "on_fail": "warn",
+            "description": ".env includes MLFLOW_TRACKING_INSECURE_TLS=true"
+          },
+          {
+            "id": "env-not-staged",
+            "type": "exec",
+            "command": "! git diff --cached --name-only | grep -q 'agents/${AGENT_PATH}/.env'",
+            "on_fail": "block",
+            "description": ".env file is NOT staged for git commit"
+          },
+          {
+            "id": "make-deploy-ran",
+            "type": "eval",
+            "description": "make deploy executed successfully for the agent",
+            "pass_if": "make deploy (or make build && make push && make deploy) completed without error for each non-skipped agent"
+          }
+        ]
+      },
+      "step-3g-health": {
+        "description": "Step 3g: Post-deploy health verification",
+        "assertions": [
+          {
+            "id": "route-discovered",
+            "type": "eval",
+            "description": "OpenShift route discovered for deployed agent",
+            "pass_if": "oc get route returned a host for the agent. The route URL was captured."
+          },
+          {
+            "id": "health-check-ran",
+            "type": "eval",
+            "description": "Health endpoint was curled after deployment",
+            "pass_if": "curl -sk https://<route>/health was executed and returned a response"
+          },
+          {
+            "id": "health-ok",
+            "type": "eval",
+            "description": "Agent health endpoint returned healthy status",
+            "pass_if": "Health check response indicates the agent is running (HTTP 200). Note: /health returns 200 even when MLflow tracing is broken -- tracing is verified separately in Step 4f."
+          },
+          {
+            "id": "pod-running",
+            "type": "eval",
+            "description": "Agent pod is in Running state",
+            "pass_if": "oc get pods shows the agent pod with STATUS=Running and READY containers. No CrashLoopBackOff or ImagePullBackOff."
+          },
+          {
+            "id": "unhealthy-diagnosed",
+            "type": "eval",
+            "description": "If health failed, pod logs were checked for diagnosis",
+            "pass_if": "If health check failed: oc logs deployment/<agent> --tail=30 was run and failure reason was reported. If health passed, this assertion is N/A (auto-pass)."
+          }
+        ]
+      },
+      "step-4-tokens": {
+        "description": "Step 4: MLflow token refresh for ALL deployed agents",
+        "assertions": [
+          {
+            "id": "fresh-token-obtained",
+            "type": "exec",
+            "command": "oc whoami -t >/dev/null 2>&1",
+            "on_fail": "block",
+            "description": "Fresh OpenShift token obtained via oc whoami -t"
+          },
+          {
+            "id": "secrets-discovered",
+            "type": "eval",
+            "description": "All MLflow token secrets in the namespace were found",
+            "pass_if": "oc get secrets was used to find all secrets containing mlflow-tracking-token data key. The list covers ALL agents in the namespace, not just targets."
+          },
+          {
+            "id": "secrets-patched",
+            "type": "eval",
+            "description": "Each secret was patched with the fresh token",
+            "pass_if": "oc patch secret was executed for every discovered MLflow token secret with the base64-encoded fresh token"
+          },
+          {
+            "id": "rollouts-restarted",
+            "type": "eval",
+            "description": "Deployments were restarted after token patch",
+            "pass_if": "oc rollout restart deployment/<agent> was executed for each agent whose token was refreshed"
+          }
+        ]
+      },
+      "step-4e-secretref": {
+        "description": "Step 4e: Verify secretKeyRef wiring is intact (not hardcoded)",
+        "assertions": [
+          {
+            "id": "secretref-check-ran",
+            "type": "eval",
+            "description": "MLFLOW_TRACKING_TOKEN env source was inspected for each agent",
+            "pass_if": "For each agent, the deployment spec was queried to check whether MLFLOW_TRACKING_TOKEN uses valueFrom.secretKeyRef or a hardcoded value"
+          },
+          {
+            "id": "no-hardcoded-tokens",
+            "type": "eval",
+            "description": "No deployments have hardcoded MLFLOW_TRACKING_TOKEN values",
+            "pass_if": "All agent deployments use valueFrom.secretKeyRef for MLFLOW_TRACKING_TOKEN -- none have a plain 'value' field. If any do, they were flagged and fixed via make deploy."
+          },
+          {
+            "id": "hardcoded-fixed",
+            "type": "eval",
+            "description": "Any hardcoded tokens were fixed by redeploying via make deploy",
+            "pass_if": "If hardcoded tokens were found: the agent was redeployed via make deploy (not oc set env) to restore the Helm-managed secretKeyRef. If none were found, this assertion is N/A (auto-pass)."
+          }
+        ]
+      },
+      "step-4f-mlflow": {
+        "description": "Step 4f: Verify MLflow connectivity and tracing status",
+        "assertions": [
+          {
+            "id": "rollout-complete",
+            "type": "eval",
+            "description": "All restarted deployments finished rolling out",
+            "pass_if": "oc rollout status completed successfully (within timeout) for each restarted agent"
+          },
+          {
+            "id": "tracing-enabled",
+            "type": "eval",
+            "description": "Agent startup logs show tracing is enabled",
+            "pass_if": "Agent logs contain '[Tracing Enabled]' or '[Tracing] MLflow server is reachable'. Logs do NOT contain '[Tracing] Failed to configure' or 'Expecting value: line 1 column 1'."
+          },
+          {
+            "id": "no-json-decode-error",
+            "type": "eval",
+            "description": "No JSONDecodeError in agent startup logs (expired token symptom)",
+            "pass_if": "Agent logs do NOT contain 'Expecting value: line 1 column 1 (char 0)' which indicates the MLflow API returned a 302 OAuth redirect instead of JSON"
+          },
+          {
+            "id": "health-after-restart",
+            "type": "eval",
+            "description": "Agent health endpoint returns OK after rollout",
+            "pass_if": "curl -sk https://<route>/health returns HTTP 200 after the rollout completed"
+          },
+          {
+            "id": "tracing-vs-health-note",
+            "type": "eval",
+            "description": "Tracing status was verified via logs, not just /health",
+            "pass_if": "/health returns 200 even when tracing is broken. The operator confirmed tracing status from startup logs, not solely from health endpoint."
+          }
+        ]
+      }
+    },
+    "post": {
+      "description": "All deployment steps completed -- verify final state",
+      "assertions": [
+        {
+          "id": "step-0-passed",
+          "type": "eval",
+          "description": "Prerequisites validated (oc, helm, container CLI)",
+          "pass_if": "Pre-condition gate was evaluated and all blocking assertions passed"
+        },
+        {
+          "id": "agents-resolved",
+          "type": "eval",
+          "description": "Target agents were resolved and validated",
+          "pass_if": "Step 1 completed: target list was determined, non-standard agents excluded, list shown to user"
+        },
+        {
+          "id": "config-detected",
+          "type": "eval",
+          "description": "Cluster config auto-detected or prompted",
+          "pass_if": "Step 2 completed: all required env vars resolved from existing deployments or user input"
+        },
+        {
+          "id": "deployments-complete",
+          "type": "eval",
+          "description": "All target agents deployed or skipped with reason",
+          "pass_if": "Step 3 completed for every target agent: each was deployed, redeployed, or explicitly skipped. No agent was silently dropped."
+        },
+        {
+          "id": "all-healthy",
+          "type": "eval",
+          "description": "All deployed agents passed health checks",
+          "pass_if": "Every deployed agent's /health endpoint returned OK. Any unhealthy agents were diagnosed with pod logs."
+        },
+        {
+          "id": "tokens-refreshed",
+          "type": "eval",
+          "description": "MLflow tokens refreshed for ALL agents in namespace",
+          "pass_if": "Step 4 ran comprehensively: all MLflow token secrets in the namespace were patched, all associated deployments restarted"
+        },
+        {
+          "id": "secretrefs-intact",
+          "type": "eval",
+          "description": "No deployments have hardcoded MLFLOW_TRACKING_TOKEN",
+          "pass_if": "Step 4e verified all deployments use secretKeyRef. Any hardcoded values were fixed via make deploy."
+        },
+        {
+          "id": "tracing-verified",
+          "type": "eval",
+          "description": "MLflow tracing confirmed working via startup logs",
+          "pass_if": "Step 4f confirmed [Tracing Enabled] in startup logs for all agents. No JSONDecodeError or failed tracing init."
+        },
+        {
+          "id": "summary-generated",
+          "type": "eval",
+          "description": "Step 5 summary table was printed",
+          "pass_if": "A summary table was output showing each agent's status (deployed/redeployed/skipped/failed), route, health, and token refresh status"
+        },
+        {
+          "id": "no-env-committed",
+          "type": "exec",
+          "command": "! git diff --cached --name-only | grep -q '.env$'",
+          "on_fail": "block",
+          "description": "No .env files were staged for git commit"
+        },
+        {
+          "id": "no-chart-modifications",
+          "type": "exec",
+          "command": "! git diff --name-only | grep -q 'charts/agent/'",
+          "on_fail": "block",
+          "description": "charts/agent/ templates were not modified"
+        },
+        {
+          "id": "namespace-consistent",
+          "type": "eval",
+          "description": "All oc commands used explicit -n <namespace>",
+          "pass_if": "Every oc command in the session used -n <namespace> explicitly. No command relied on the default context."
+        },
+        {
+          "id": "token-only-mode-correct",
+          "type": "eval",
+          "description": "If --token-only was specified, Steps 1-3 were skipped",
+          "pass_if": "When --token-only flag was present: agent resolution, config detection, build, and deploy steps were all skipped. Only Step 4 (token refresh) and Step 5 (summary) executed. If --token-only was NOT specified, this assertion is N/A (auto-pass)."
+        }
+      ]
+    }
+  }
+}
