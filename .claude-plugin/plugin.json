@@ -1,0 +1,12 @@
+{
+  "name": "agentic-starter-kits-skills",
+  "version": "0.1.0",
+  "description": "Claude Code skills for agentic-starter-kits contributors.",
+  "author": {
+    "name": "red-hat-data-services"
+  },
+  "repository": "https://github.com/red-hat-data-services/agentic-starter-kits-skills",
+  "license": "MIT",
+  "keywords": ["agentic-starter-kits", "openshift", "testing", "agents"],
+  "skills": "./skills"
+}

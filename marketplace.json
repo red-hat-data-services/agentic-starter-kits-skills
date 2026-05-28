@@ -1,0 +1,16 @@
+{
+  "name": "agentic-starter-kits-skills",
+  "description": "Claude Code skills for agentic-starter-kits contributors.",
+  "repository": "https://github.com/red-hat-data-services/agentic-starter-kits-skills",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "name": "add-integration-tests",
+      "description": "Skill for adding integration tests to an agentic-starter-kits agent."
+    },
+    {
+      "name": "add-behavioral-tests",
+      "description": "Skill for adding behavioral tests to an agentic-starter-kits agent."
+    }
+  ]
+}
