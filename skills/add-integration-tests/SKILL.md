@@ -1,5 +1,4 @@
 ---
-name: add-integration-tests
 description: Skill for adding integration tests to an agentic-starter-kits agent. Use when the user wants to add, scaffold, or improve integration tests for an agent.
 ---
 

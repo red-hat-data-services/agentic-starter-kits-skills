@@ -1,0 +1,14 @@
+{
+  "name": "agentic-starter-kits-skills",
+  "owner": {
+    "name": "red-hat-data-services"
+  },
+  "description": "Claude Code skills for agentic-starter-kits contributors.",
+  "plugins": [
+    {
+      "name": "agentic-starter-kits-skills",
+      "source": ".",
+      "description": "Claude Code skills for agentic-starter-kits contributors."
+    }
+  ]
+}

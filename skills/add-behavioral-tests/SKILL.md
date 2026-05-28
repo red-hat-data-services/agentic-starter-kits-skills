@@ -1,5 +1,4 @@
 ---
-name: add-behavioral-tests
 description: Skill for adding behavioral tests to an agentic-starter-kits agent. Use when the user wants to add, scaffold, or improve behavioral tests for an agent.
 ---
 
