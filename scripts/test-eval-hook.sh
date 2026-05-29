@@ -352,6 +352,137 @@ run_test \
     "eval-gate"
 
 # ===================================================================
+# add-integration-tests skill tests
+# ===================================================================
+
+echo ""
+echo "--- add-integration-tests: PreToolUse ---"
+
+run_test \
+    "emits eval-gate XML" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk RHAIENG-4647"}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "includes permissionDecision" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "permissionDecision"
+
+run_test \
+    "includes pre-conditions text" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "pre-conditions before proceeding"
+
+run_test \
+    "runs exec assertions (shows PASS or FAIL)" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "Executable assertion results"
+
+run_test \
+    "includes assertion IDs (repo-root)" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "repo-root"
+
+run_test \
+    "includes eval assertions for Claude" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "Pass if:"
+
+run_test \
+    "resolves agent path in exec commands" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "agent-dir-exists"
+
+run_test \
+    "status line shows assertion counts" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "assertions"
+
+run_test \
+    "status line shows correct skill name" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "agentic-starter-kits-skills:add-integration-tests"
+
+echo ""
+echo "--- add-integration-tests: PostToolUse ---"
+
+run_test \
+    "emits eval-gate XML" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "includes post-conditions text" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "post-conditions to confirm success"
+
+run_test_absent \
+    "PostToolUse does NOT include permissionDecision" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "permissionDecision"
+
+run_test \
+    "post gate has exec assertions (files-created)" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "files-created"
+
+run_test \
+    "post gate has eval assertions (collection-passed)" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "collection-passed"
+
+run_test \
+    "PostToolUse includes report template" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "eval-report"
+
+run_test \
+    "report template has agent name" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "adk"
+
+run_test \
+    "report template has summary table" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "| Gate | Result |"
+
+run_test_absent \
+    "PreToolUse does NOT include report template" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "eval-report"
+
+echo ""
+echo "--- add-integration-tests: Edge cases ---"
+
+run_test \
+    "No args still emits eval assertions" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":""}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "Args without slash — agent path empty, exec assertions still run" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"RHAIENG-4647"}}' \
+    "output" \
+    "eval-gate"
+
+# ===================================================================
 # Cross-skill isolation
 # ===================================================================
 
@@ -369,6 +500,16 @@ run_test_absent \
     "helm-installed"
 
 run_test_absent \
+    "add-integration-tests PreToolUse does NOT emit deploy-agents content" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "helm-installed"
+
+run_test_absent \
+    "add-integration-tests PreToolUse does NOT emit add-behavioral-tests content" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "dod-satisfied"
+
+run_test_absent \
     "deploy-agents PostToolUse does NOT include eval-report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:deploy-agents","args":"crewai/websearch_agent"}}' \
     "eval-report"
@@ -376,6 +517,12 @@ run_test_absent \
 run_test \
     "add-behavioral-tests PostToolUse DOES include eval-report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "eval-report"
+
+run_test \
+    "add-integration-tests PostToolUse DOES include eval-report template" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
     "output" \
     "eval-report"
 

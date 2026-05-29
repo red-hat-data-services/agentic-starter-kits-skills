@@ -1,0 +1,264 @@
+{
+  "agentic-starter-kits-skills:add-integration-tests": {
+    "pre": {
+      "description": "Skill invocation pre-conditions",
+      "assertions": [
+        {
+          "id": "repo-root",
+          "type": "exec",
+          "command": "test -f AGENTS.md",
+          "on_fail": "warn",
+          "description": "Working directory is agentic-starter-kits repo root"
+        },
+        {
+          "id": "agent-dir-exists",
+          "type": "exec",
+          "command": "test -d agents/${AGENT_PATH}",
+          "on_fail": "warn",
+          "description": "Agent directory exists under agents/"
+        },
+        {
+          "id": "standard-agent",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/main.py",
+          "on_fail": "warn",
+          "description": "Agent has main.py (standard agent pattern)"
+        },
+        {
+          "id": "agent-yaml-exists",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/agent.yaml",
+          "on_fail": "warn",
+          "description": "Agent has agent.yaml with name field"
+        },
+        {
+          "id": "makefile-exists",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/Makefile",
+          "on_fail": "warn",
+          "description": "Agent has Makefile with deploy targets"
+        },
+        {
+          "id": "no-existing-itests",
+          "type": "exec",
+          "command": "! test -f agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+          "on_fail": "warn",
+          "description": "Integration tests do not already exist for this agent"
+        },
+        {
+          "id": "shared-infra-exists",
+          "type": "exec",
+          "command": "test -f tests/integration/conftest.py && test -f tests/integration/utils.py",
+          "on_fail": "block",
+          "description": "Shared integration test infrastructure exists at tests/integration/"
+        },
+        {
+          "id": "agent-arg",
+          "type": "eval",
+          "description": "Agent path argument provided and non-empty",
+          "pass_if": "First word of skill args contains a / separator (e.g. google/adk)"
+        }
+      ]
+    },
+    "gates": {
+      "phase-2-files": {
+        "description": "Phase 2: Integration test files created",
+        "assertions": [
+          {
+            "id": "init-py-exists",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/tests/integration/__init__.py",
+            "on_fail": "block",
+            "description": "__init__.py exists in tests/integration/"
+          },
+          {
+            "id": "conftest-exists",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/tests/integration/conftest.py",
+            "on_fail": "block",
+            "description": "conftest.py exists with shared fixture re-exports"
+          },
+          {
+            "id": "test-file-exists",
+            "type": "exec",
+            "command": "test -f agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+            "on_fail": "block",
+            "description": "test_deployment.py exists with health check test"
+          },
+          {
+            "id": "conftest-imports-shared",
+            "type": "exec",
+            "command": "grep -q 'from integration.conftest import' agents/${AGENT_PATH}/tests/integration/conftest.py",
+            "on_fail": "block",
+            "description": "conftest.py imports shared fixtures from integration.conftest"
+          },
+          {
+            "id": "test-has-marker",
+            "type": "exec",
+            "command": "grep -q '@pytest.mark.integration' agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+            "on_fail": "block",
+            "description": "test_deployment.py has @pytest.mark.integration marker"
+          },
+          {
+            "id": "test-has-health-check",
+            "type": "exec",
+            "command": "grep -q 'def test_health_endpoint' agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+            "on_fail": "block",
+            "description": "test_deployment.py has test_health_endpoint function"
+          },
+          {
+            "id": "test-has-deployed-agent",
+            "type": "exec",
+            "command": "grep -q 'deployed_agent' agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+            "on_fail": "block",
+            "description": "test_deployment.py uses deployed_agent fixture"
+          }
+        ]
+      },
+      "phase-3-makefile": {
+        "description": "Phase 3: Makefile test-integration target present",
+        "assertions": [
+          {
+            "id": "makefile-has-target",
+            "type": "exec",
+            "command": "grep -q 'test-integration:' agents/${AGENT_PATH}/Makefile",
+            "on_fail": "block",
+            "description": "Makefile has test-integration target"
+          },
+          {
+            "id": "makefile-has-pythonpath",
+            "type": "exec",
+            "command": "grep -q 'PYTHONPATH' agents/${AGENT_PATH}/Makefile",
+            "on_fail": "warn",
+            "description": "test-integration target sets PYTHONPATH to repo root tests/"
+          },
+          {
+            "id": "test-ignores-integration",
+            "type": "exec",
+            "command": "grep 'test:' agents/${AGENT_PATH}/Makefile -A2 | grep -q 'ignore=tests/integration'",
+            "on_fail": "warn",
+            "description": "Unit test target ignores tests/integration/"
+          }
+        ]
+      },
+      "phase-4-ci": {
+        "description": "Phase 4: CI workflow matrix updated",
+        "assertions": [
+          {
+            "id": "ci-has-agent",
+            "type": "exec",
+            "command": "grep -q '${AGENT_PATH}' .github/workflows/agent-deployment-test.yaml",
+            "on_fail": "block",
+            "description": "CI workflow matrix includes the agent path"
+          },
+          {
+            "id": "ci-yaml-valid",
+            "type": "eval",
+            "description": "CI workflow YAML has valid syntax after edit",
+            "pass_if": "The agent-deployment-test.yaml file has valid YAML syntax. The matrix entry follows the pattern: { name: <slug>, dir: agents/<path> }"
+          }
+        ]
+      },
+      "phase-5a-collect": {
+        "description": "Phase 5a: Test collection succeeds",
+        "assertions": [
+          {
+            "id": "collect-ok",
+            "type": "eval",
+            "description": "pytest --collect-only passes with no import errors",
+            "pass_if": "Running PYTHONPATH=$(git rev-parse --show-toplevel)/tests uv run --extra dev python -m pytest tests/integration/test_deployment.py --collect-only -q from the agent dir shows 1 test collected, no errors"
+          }
+        ]
+      },
+      "phase-5b-live": {
+        "description": "Phase 5b: Live cluster integration test (if cluster available)",
+        "assertions": [
+          {
+            "id": "oc-auth",
+            "type": "exec",
+            "command": "oc whoami",
+            "on_fail": "warn",
+            "description": "Logged into OpenShift cluster (required for live test)"
+          },
+          {
+            "id": "live-test-passed",
+            "type": "eval",
+            "description": "make test-integration passed against live cluster",
+            "pass_if": "make test-integration completed with exit 0, test_health_endpoint PASSED, agent was deployed, health-checked, and torn down successfully. OR: cluster not available, test skipped with reason documented."
+          }
+        ],
+        "waiver": {
+          "condition": "No cluster access available (oc whoami fails or not in ci-testing namespace)",
+          "action": "Skip live test, document that it was not run. Test collection (5a) is sufficient for PR."
+        }
+      },
+      "phase-5c-consistency": {
+        "description": "Phase 5c: Cross-agent consistency check",
+        "assertions": [
+          {
+            "id": "conftest-matches-pattern",
+            "type": "eval",
+            "description": "conftest.py follows the established 2-line re-export pattern",
+            "pass_if": "conftest.py re-exports cluster_auth and repo_root from integration.conftest, matching existing agents (react_agent, crewai/websearch_agent, human_in_the_loop)"
+          },
+          {
+            "id": "test-structure-matches",
+            "type": "eval",
+            "description": "test_deployment.py follows the canonical structure of existing agent integration tests",
+            "pass_if": "test_deployment.py has: INTERNAL_REGISTRY constant, agent_dir fixture (module scope), agent_name fixture (module scope), _write_env_file function, deployed_agent fixture (module scope) with build-openshift/deploy/undeploy lifecycle, @pytest.mark.integration test_health_endpoint function with health_check() call asserting status=='healthy' and agent_initialized is True"
+          },
+          {
+            "id": "env-vars-correct",
+            "type": "eval",
+            "description": "_write_env_file validates the correct required env vars for this agent",
+            "pass_if": "The required env vars checked in _write_env_file match what the agent actually needs based on agent.yaml and .env.example. Simple agents check ('BASE_URL', 'MODEL_ID'). Complex agents add agent-specific vars."
+          }
+        ]
+      }
+    },
+    "post": {
+      "description": "All phases complete — integration tests added",
+      "assertions": [
+        {
+          "id": "files-created",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/tests/integration/__init__.py && test -f agents/${AGENT_PATH}/tests/integration/conftest.py && test -f agents/${AGENT_PATH}/tests/integration/test_deployment.py",
+          "on_fail": "block",
+          "description": "All three integration test files exist"
+        },
+        {
+          "id": "makefile-target",
+          "type": "exec",
+          "command": "grep -q 'test-integration:' agents/${AGENT_PATH}/Makefile",
+          "on_fail": "block",
+          "description": "Makefile has test-integration target"
+        },
+        {
+          "id": "ci-updated",
+          "type": "exec",
+          "command": "grep -q '${AGENT_PATH}' .github/workflows/agent-deployment-test.yaml",
+          "on_fail": "block",
+          "description": "CI workflow includes the agent"
+        },
+        {
+          "id": "collection-passed",
+          "type": "eval",
+          "description": "Phase 5a: Test collection passed",
+          "pass_if": "pytest --collect-only succeeded with 1 test collected and no errors"
+        },
+        {
+          "id": "live-test-status",
+          "type": "eval",
+          "description": "Phase 5b: Live test result documented",
+          "pass_if": "Live integration test either passed (PASS) or was skipped due to no cluster access (WAIVED with reason)"
+        },
+        {
+          "id": "consistency-check",
+          "type": "eval",
+          "description": "Phase 5c: Cross-agent consistency verified",
+          "pass_if": "New test files follow the same structure as existing agents' integration tests (conftest re-exports, test_deployment.py canonical structure, correct env vars)"
+        }
+      ]
+    }
+  }
+}

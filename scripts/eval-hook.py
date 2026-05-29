@@ -465,7 +465,7 @@ def main():
 
     full_context = f"{status}\n{context}"
 
-    if phase == "post" and skill_name.endswith(":add-behavioral-tests"):
+    if phase == "post" and skill_name.endswith((":add-behavioral-tests", ":add-integration-tests")):
         report = build_report_template(command_criteria, agent_path)
         full_context = f"{full_context}\n\n{report}"
 
