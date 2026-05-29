@@ -444,10 +444,23 @@ run_test \
     "output" \
     "collection-passed"
 
-run_test_absent \
-    "PostToolUse does NOT include report template" \
+run_test \
+    "PostToolUse includes report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
     "eval-report"
+
+run_test \
+    "report template has agent name" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "adk"
+
+run_test \
+    "report template has summary table" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
+    "| Gate | Result |"
 
 run_test_absent \
     "PreToolUse does NOT include report template" \
@@ -507,9 +520,10 @@ run_test \
     "output" \
     "eval-report"
 
-run_test_absent \
-    "add-integration-tests PostToolUse does NOT include eval-report template" \
+run_test \
+    "add-integration-tests PostToolUse DOES include eval-report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
+    "output" \
     "eval-report"
 
 # ===================================================================
