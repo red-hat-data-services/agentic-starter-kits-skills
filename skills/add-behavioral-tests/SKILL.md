@@ -12,7 +12,7 @@ argument-hint: "<agent_path> [JIRA-KEY]"
 
 End-to-end workflow for adding behavioral testing support to any agent in the agentic-starter-kits repo. Produces pytest behavioral tests + EvalHub fixture + documentation updates. Verifies (but does not set up) MLflow tracing.
 
-**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (0 through 11k) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
+**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (0 through 10, plus validation via run-behavioral-tests) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
 
 ## Boundary: Do NOT modify the agent under test
 
@@ -101,7 +101,7 @@ Determine:
 Gather these facts:
 
 1. **Agent location**: `agents/<framework>/<agent_name>/`. Check if the agent is non-standard (see AGENTS.md — langflow and a2a agents diverge significantly). If it lacks `main.py`, `src/`, or standard Makefile targets, stop and tell the user that this workflow does not yet support non-standard agents.
-2. **Tools available**: Read the agent's tool definitions (MCP server, `@tool` decorators, OpenAI function schemas). If the agent has **no tools** (pure chat agent), skip `test_tool_usage.py` in Phase 4, omit `expected_tools` from golden queries, and waive the Phase 11b tool enrichment gate. Focus testing on `test_response_quality.py`, `test_cost_latency.py`, and `test_reliability.py` only.
+2. **Tools available**: Read the agent's tool definitions (MCP server, `@tool` decorators, OpenAI function schemas). If the agent has **no tools** (pure chat agent), skip `test_tool_usage.py` in Phase 4, omit `expected_tools` from golden queries, and waive the `run-behavioral-tests` Phase 2 tool enrichment gate. Focus testing on `test_response_quality.py`, `test_cost_latency.py`, and `test_reliability.py` only.
 3. **Response format**: Read the agent's `/chat/completions` handler in `main.py`. Determine if it returns:
 
    - Standard OpenAI format (`choices[].message.content` + `tool_calls`) -- harness works as-is
@@ -409,208 +409,13 @@ Reference the existing agent blocks in the script for the pattern. Each agent ne
 
 **Stream parameter in generated YAML**: Do NOT add `stream: true` to the generated eval config unless the agent was classified as "Standard streaming" in Phase 1 step 5. The adapter defaults to `stream=false`, which is correct for most agents. If omitted from the YAML, the default applies.
 
-## Phase 11: Validate
+## Phase 11: Run Validation
 
-> **Gate system**: Phase 11 gates are defined in `references/eval-criteria-btest-validate.json`. The `pre` and `post` gates fire automatically via PreToolUse/PostToolUse hooks. Mid-execution gates (`validate-pre`, `phase-11a` through `phase-11e`) are evaluated inline at each sub-phase boundary — read the criteria file and verify all checks pass before proceeding.
+Invoke the validation skill to execute all test validation phases:
 
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.validate-pre` — consult eval-criteria. Verify all Phase 1-10 outputs exist before starting validation.
+`/agentic-starter-kits-skills:run-behavioral-tests <agent_path>`
 
-### 11a: Pytest behavioral tests (with MLflow trace enrichment)
-
-MLflow env vars are REQUIRED for behavioral tests — without them, tool_calls cannot be extracted from traces and tool selection tests degrade to weak content heuristics.
-
-**IMPORTANT: Run from the repo root directory** (`agentic-starter-kits/`), not from the agent directory. The test dependencies (`pytest-asyncio`, `harness` package) are declared in the **root** `pyproject.toml` under `[project.optional-dependencies] test`, not in agent-level `pyproject.toml` files. Running from an agent directory uses the agent's venv which lacks these deps and fails with `PytestRemovedIn9Warning: requested an async fixture with no plugin that handled it`.
-
-```bash
-# MUST run from repo root
-cd /path/to/agentic-starter-kits
-
-# Collect tests (verify discovery)
-uv run --extra test python -m pytest agents/<framework>/<agent_name>/tests/behavioral/ --collect-only
-
-# Run against live agent with MLflow enabled (ALL six env vars required for OpenShift MLflow)
-<AGENT_ENV_VAR>=https://<route> \
-MLFLOW_TRACKING_URI=<uri> \
-MLFLOW_EXPERIMENT_NAME=<experiment> \
-MLFLOW_TRACKING_TOKEN=$(oc whoami -t) \
-MLFLOW_WORKSPACE=<namespace> \
-MLFLOW_TRACKING_INSECURE_TLS=true \
-uv run --extra test python -m pytest agents/<framework>/<agent_name>/tests/behavioral/ -v
-```
-
-**`MLFLOW_WORKSPACE` is mandatory for OpenShift MLflow** — without it the MLflow API returns `INVALID_PARAMETER_VALUE: Workspace context is required for this request`. Set it to the OpenShift namespace (e.g. the value from `oc project -q`).
-
-All tests must pass.
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11a` — consult eval-criteria.
-
-### 11b: Verify tool_calls came from MLflow traces (GATE — blocks completion)
-
-This is a **hard gate**, not a soft check. Tests passing without MLflow enrichment is a FAILURE — it means tool selection scoring fell back to unreliable content heuristics, giving a false sense of coverage. Do not mark the work as complete if this gate fails.
-
-**Waiver**: If Phase 2a determined that tracing is missing/broken and a Jira bug was filed, this gate is waived. Document in the agent's README testing section (Phase 8 item 5) that tool scoring is operating in degraded mode (content heuristics only), reference the bug ticket, and note the expected behavior once tracing is fixed. The gate only blocks when tracing is expected to work but enrichment fails at runtime.
-
-After the test run, confirm that `MLflowTraceClient.enrich_eval_result()` successfully extracted tool_calls from MLflow trace spans:
-
-1. **Check test output for warnings**: Look for both the "tool_calls not exposed in response" warning (from test code) AND the "MLflow enrichment failed" warning (from conftest). Either one means enrichment did not work.
-2. **Confirm scorer execution**: The tool selection tests should have run `score_tool_selection()` (F1 scoring), `score_hallucinated_tools()`, and `score_tool_call_validity()` — not just content keyword matching.
-3. **If ANY enrichment warning is emitted**, enrichment failed. Debug:
-
-   - Both `MLFLOW_TRACKING_URI` and `MLFLOW_EXPERIMENT_NAME` must be set (both required for `MLflowTraceClient` to initialize)
-   - Agent pod must have a valid `MLFLOW_TRACKING_TOKEN` (not expired)
-   - MLflow must be reachable from the agent pod: `oc exec deployment/<agent-name> -- curl -s <uri>/health`
-   - Traces must exist in the experiment — query: `curl -s "${MLFLOW_TRACKING_URI}/api/2.0/mlflow/experiments/get-by-name?experiment_name=<experiment>"`
-   - Tool spans must have `SpanType.TOOL` — the extraction uses `"TOOL" in str(span_type).upper()` which matches standard MLflow span types from both autolog and `wrap_func_with_mlflow_trace()`
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11b` — consult eval-criteria. **HARD GATE — blocks completion.**
-
-### 11c: Verify MLflow trace structure
-
-Use the `inspect-span-types` procedure from `references/mlflow-procedures.json`. This is the **only** way to verify trace structure — do not use ad-hoc curl commands or invent alternative approaches.
-
-The procedure queries the MLflow API, fetches the latest trace, and prints the full span tree with types, names, and parent relationships. Run it exactly as written.
-
-Confirm these span types appear in the output:
-
-- `[TOOL]` spans with names matching the agent's tool names
-- `[CHAT_MODEL]` spans with `tokenUsage` values
-- Framework spans: `[CHAIN]` for LangGraph/LangChain, `[AGENT]` for CrewAI, `[RETRIEVER]` for RAG agents
-- Parent/child relationships — not all spans at `parent=ROOT`
-
-If tool spans are missing, check whether tracing is actually enabled in the agent (Phase 2a indicators). If tracing is integrated but tool spans are absent, the tracing wiring may be incomplete — log a bug under the parent epic.
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11c` — consult eval-criteria.
-
-### 11d: Check agent pod logs
-
-```bash
-oc logs deployment/<agent-name> -n <namespace> --tail=50
-```
-
-Look for:
-
-- MLflow connection errors or auth failures
-- Tracing initialization messages
-- Any warnings about span creation failures
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11d` — consult eval-criteria.
-
-### 11e: Run EvalHub E2E job
-
-Run the full E2E script to validate the EvalHub integration end-to-end:
-
-```bash
-cd evals/evalhub_adapter/tests
-./run-e2e.sh
-```
-
-This must:
-
-- Discover the new agent's route
-- Build/push the updated adapter image (with the new COPY'd fixture)
-- Register the provider
-- Submit eval jobs for ALL agents (including the new one)
-- Poll until completion
-- Report results with non-null scores
-
-Verify the new agent's job completes with `state: completed` and scores are reasonable. Failures in other agents' jobs that are unrelated to tracing may be pre-existing, but `mlflow_run_id: null` is NEVER pre-existing — it is always a FAIL.
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11e` — consult eval-criteria.
-
-### 11f: Verify E2E MLflow enrichment
-
-After the E2E run, verify that MLflow enrichment worked — this mirrors Phase 11b but for the EvalHub-orchestrated run. Use procedures from `references/mlflow-procedures.json`:
-
-1. **Run `count-traces-since`** to verify new traces were created during the E2E run. Compare trace count before vs after.
-2. **mlflow_run_id must be non-null** for ALL agents' eval results. A null `mlflow_run_id` means the agent did not produce a trace — this is a FAILURE regardless of which agent produced it. Debug with: `oc get deployment/<agent> -o jsonpath='{.spec.template.spec.containers[0].env}'` to check MLflow env vars on the pod.
-3. **No enrichment failures**: Check E2E script output for "MLflow enrichment failed" or "enrichment error".
-4. **tool_calls populated**: Tool selection scores > 0 for queries with expected_tools. All-zero scores mean enrichment failed silently.
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11f` — consult eval-criteria.
-
-### 11g: Verify E2E MLflow trace structure
-
-Inspect MLflow traces created during the E2E run — this mirrors Phase 11c. Run the `inspect-span-types` procedure from `references/mlflow-procedures.json`. Same procedure as 11c, same expected output:
-
-- `[TOOL]` spans with agent tool names
-- `[CHAT_MODEL]` spans with `tokenUsage`
-- Framework spans (`[CHAIN]`/`[AGENT]`/`[RETRIEVER]`)
-- Parent/child nesting (not all `parent=ROOT`)
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11g` — consult eval-criteria.
-
-### 11h: Check agent pod logs after E2E
-
-Inspect agent pod logs after the E2E run — this mirrors Phase 11d.
-
-```bash
-oc logs deployment/<agent-name> -n <namespace> --tail=50
-```
-
-Look for:
-
-- MLflow connection errors or auth failures
-- Tracing activity during the E2E run window
-- Span creation failures
-- Unhandled exceptions related to MLflow or tracing
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11h` — consult eval-criteria.
-
-### 11i: Inspect EvalHub adapter container
-
-Verify the adapter container is correctly configured for the new agent:
-
-1. **Fixture present**: `oc exec deployment/evalhub-adapter -- ls fixtures/<agent_short>/tool_use.yaml`
-2. **Fixture parseable**: No YAML errors in adapter logs related to the agent's fixture
-3. **Provider registered**: EvalHub API lists the agent with correct route URL
-4. **Scoring config**: `stream=false` unless agent is "Standard streaming"
-5. **Adapter logs clean**: No errors for this agent (connection, scoring, timeout)
-6. **MLflow connectivity**: Adapter can reach MLflow for trace enrichment
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11i` — consult eval-criteria.
-
-### 11j: Cross-agent Implementation Consistency Check
-
-Read the full behavioral test implementation of ALL existing agents (`agents/*/tests/behavioral/`) and verify the new agent is consistent across every layer. If ANY existing agent deviates, fix it in this PR.
-
-**conftest.py:**
-
-1. `_find_repo_root()` raises `FileNotFoundError`, not `pytest.skip()`
-2. MLflow enrichment uses `asyncio.to_thread` + `try/except` + `logging.warning()` + `warnings.warn()` — all four elements
-3. `load_golden()` function body is identical across agents
-4. Import block has stdlib separated from third-party (ruff I001)
-5. `run_eval` has the same parameter list across agents (`stream` must NOT be a parameter — it must be a `STREAM` module-level constant used in TaskConfig)
-
-**Test files:**
-6. Same four test files exist (plus `test_streaming_parity.py` if agent supports standard streaming)
-7. Each uses `pytestmark = pytest.mark.<agent_marker>`; reliability also includes `pytest.mark.slow`
-8. Scorer imports are consistent
-9. Core test functions match the existing pattern
-10. All test functions use the `run_eval` fixture — no direct HTTP calls (exception: `test_streaming_parity.py` uses `run_task` directly since it needs explicit `stream=` control)
-
-**Fixtures:**
-11. `golden_queries.yaml` standard schema: `query`, `expected_tools`, `expected_elements`, `difficulty`, `category`
-12. `evalhub/tool_use.yaml` standard schema: `query`, `expected_tools`, `expected_elements`
-
-**Config:**
-13. `thresholds.yaml` agent section has the same keys as other agents
-
-**Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-11j` — consult eval-criteria.
-
-### 11k: Generate Validation Report
-
-After all Phase 11 gates have been evaluated, generate a validation report. The PostToolUse hook emits a report template (`<eval-report>`) — use it as the structure.
-
-Write the completed report to: `tests/behavioral/reports/BTEST_VALIDATION_REPORT_<agent_name>.md`
-
-For every assertion:
-
-- `[PASS]` — verified and succeeded
-- `[FAIL]` — verified and failed
-- `[WAIVED]` — waiver condition met (with Jira bug reference)
-- `[SKIPPED]` — not applicable
-
-Fill in all summary sections (MLflow Trace Summary, EvalHub E2E Summary, Bugs Filed). This report is a permanent record and should be committed alongside the test artifacts.
+This runs pytest, verifies MLflow traces, executes EvalHub E2E, performs cross-agent consistency checks, and generates the validation report. See the `run-behavioral-tests` skill for full validation details.
 
 ## Definition of Done
 
@@ -623,16 +428,6 @@ Fill in all summary sections (MLflow Trace Summary, EvalHub E2E Summary, Bugs Fi
 - [ ]  Repo-root `pyproject.toml` updated with pytest marker
 - [ ]  `evals/evalhub_adapter/tests/run-e2e.sh` updated with agent blocks
 - [ ]  All five documentation files updated (Phase 8 items 1-5)
-- [ ]  Phase 11a: all pytest behavioral tests pass
-- [ ]  Phase 11b: tool_calls enrichment gate passed (or waived with bug ticket if tracing is missing)
-- [ ]  Phase 11c: MLflow trace structure verified
-- [ ]  Phase 11d: Agent pod logs clean
-- [ ]  Phase 11e: EvalHub E2E job completes with reasonable scores
-- [ ]  Phase 11f: E2E MLflow enrichment verified (mlflow_run_id non-null for all agents)
-- [ ]  Phase 11g: E2E MLflow trace structure verified
-- [ ]  Phase 11h: Agent pod logs clean after E2E
-- [ ]  Phase 11i: EvalHub adapter container inspection passed
 - [ ]  Any agent bugs found during the process are filed as Jira bugs under the parent epic
-- [ ]  Phase 11j: Cross-agent consistency check passed (13-point verification)
-- [ ]  Phase 11k: Validation report generated and committed
+- [ ]  Phase 11: Validation completed via `/agentic-starter-kits-skills:run-behavioral-tests`
 - [ ]  Jira ticket updated with results summary

@@ -1,0 +1,37 @@
+{
+  "mlflow_procedures": {
+    "_purpose": "Exact commands for MLflow verification. Gates reference these by ID. Run these commands — do not invent alternative approaches.",
+    "get-experiment-id": {
+      "description": "Get the experiment ID from the experiment name",
+      "command": "curl -s \"${MLFLOW_TRACKING_URI}/api/2.0/mlflow/experiments/get-by-name?experiment_name=${MLFLOW_EXPERIMENT_NAME}\" -H \"Authorization: Bearer $(oc whoami -t)\" -H \"X-Databricks-Workspace: ${MLFLOW_WORKSPACE}\"",
+      "extract": "$.experiment.experiment_id",
+      "notes": "Save the experiment_id — it is required by all subsequent trace queries. If the response contains an error about workspace, ensure MLFLOW_WORKSPACE is set to the OpenShift namespace."
+    },
+    "check-token-validity": {
+      "description": "Verify the MLflow auth token is valid (not expired)",
+      "command": "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: Bearer $(oc whoami -t)\" -H \"X-Databricks-Workspace: ${MLFLOW_WORKSPACE}\" \"${MLFLOW_TRACKING_URI}/api/2.0/mlflow/experiments/list?max_results=1\"",
+      "expect": "200",
+      "notes": "401/403 = expired or invalid token. Non-JSON response (HTML redirect) = RHOAI OAuth session expired, re-run 'oc whoami -t'."
+    },
+    "list-recent-traces": {
+      "description": "Get the most recent traces from the experiment",
+      "command": "EXPERIMENT_ID=$(curl -s \"${MLFLOW_TRACKING_URI}/api/2.0/mlflow/experiments/get-by-name?experiment_name=${MLFLOW_EXPERIMENT_NAME}\" -H \"Authorization: Bearer $(oc whoami -t)\" -H \"X-Databricks-Workspace: ${MLFLOW_WORKSPACE}\" | python3 -c \"import sys,json; print(json.load(sys.stdin)['experiment']['experiment_id'])\") && curl -s \"${MLFLOW_TRACKING_URI}/api/2.0/mlflow/traces?experiment_ids=${EXPERIMENT_ID}&max_results=5\" -H \"Authorization: Bearer $(oc whoami -t)\" -H \"X-Databricks-Workspace: ${MLFLOW_WORKSPACE}\" | python3 -m json.tool",
+      "notes": "Returns the 5 most recent traces. Each trace has request_id, timestamp_ms, status, tags, etc. Use request_id to fetch spans."
+    },
+    "get-trace-spans": {
+      "description": "Get all spans from a specific trace",
+      "command": "curl -s \"${MLFLOW_TRACKING_URI}/api/2.0/mlflow/traces/${TRACE_REQUEST_ID}\" -H \"Authorization: Bearer $(oc whoami -t)\" -H \"X-Databricks-Workspace: ${MLFLOW_WORKSPACE}\" | python3 -m json.tool",
+      "notes": "Replace ${TRACE_REQUEST_ID} with a request_id from list-recent-traces. Response contains trace_info and trace_data with spans array. Each span has: name, span_type, parent_id, inputs, outputs, attributes, status."
+    },
+    "inspect-span-types": {
+      "description": "List all span types and names from the latest trace",
+      "command": "python3 -c \"\nimport json, subprocess, sys\nuri = '${MLFLOW_TRACKING_URI}'\ntoken = subprocess.check_output(['oc', 'whoami', '-t']).decode().strip()\nws = '${MLFLOW_WORKSPACE}'\nheaders = {'Authorization': f'Bearer {token}', 'X-Databricks-Workspace': ws}\n\nimport urllib.request\ndef get(url):\n    req = urllib.request.Request(url, headers=headers)\n    return json.loads(urllib.request.urlopen(req).read())\n\nexp = get(f'{uri}/api/2.0/mlflow/experiments/get-by-name?experiment_name=${MLFLOW_EXPERIMENT_NAME}')\neid = exp['experiment']['experiment_id']\ntraces = get(f'{uri}/api/2.0/mlflow/traces?experiment_ids={eid}&max_results=1')\nif not traces.get('traces'):\n    print('NO TRACES FOUND'); sys.exit(1)\ntid = traces['traces'][0]['info']['request_id']\ntrace = get(f'{uri}/api/2.0/mlflow/traces/{tid}')\nspans = trace.get('trace_data', {}).get('spans', [])\nprint(f'Trace {tid}: {len(spans)} spans')\nfor s in spans:\n    st = s.get('span_type', 'UNKNOWN')\n    name = s.get('name', '?')\n    parent = s.get('parent_id', 'ROOT')\n    attrs = s.get('attributes', {})\n    usage = attrs.get('mlflow.chat.tokenUsage', '')\n    extra = f' tokenUsage={usage}' if usage else ''\n    print(f'  [{st}] {name} (parent={parent}){extra}')\n\"",
+      "notes": "This is the PRIMARY verification command. It shows the full span tree with types. Look for: TOOL spans with agent tool names, CHAT_MODEL spans with tokenUsage, framework spans (CHAIN/AGENT/RETRIEVER). If 'NO TRACES FOUND', tracing is not working."
+    },
+    "count-traces-since": {
+      "description": "Count traces created since a timestamp (for verifying new traces from a test run)",
+      "command": "python3 -c \"\nimport json, subprocess, time\nuri = '${MLFLOW_TRACKING_URI}'\ntoken = subprocess.check_output(['oc', 'whoami', '-t']).decode().strip()\nws = '${MLFLOW_WORKSPACE}'\nheaders = {'Authorization': f'Bearer {token}', 'X-Databricks-Workspace': ws}\n\nimport urllib.request\ndef get(url):\n    req = urllib.request.Request(url, headers=headers)\n    return json.loads(urllib.request.urlopen(req).read())\n\nexp = get(f'{uri}/api/2.0/mlflow/experiments/get-by-name?experiment_name=${MLFLOW_EXPERIMENT_NAME}')\neid = exp['experiment']['experiment_id']\ntraces = get(f'{uri}/api/2.0/mlflow/traces?experiment_ids={eid}&max_results=100')\nall_traces = traces.get('traces', [])\nprint(f'Total traces in experiment: {len(all_traces)}')\nif all_traces:\n    latest = all_traces[0]['info']\n    print(f'Latest trace: {latest[\"request_id\"]} at {latest.get(\"timestamp_ms\", \"?\")}')\n\"",
+      "notes": "Run this BEFORE and AFTER a test/E2E run to verify new traces were created. Compare the counts."
+    }
+  }
+}

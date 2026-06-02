@@ -229,20 +229,16 @@ def format_status_line(
     return f"[eval-gate] {phase_label}: {command} — {', '.join(parts)}"
 
 
-# add-behavioral-tests report template gate ordering (used by build_report_template only)
-GATE_ORDER = [
-    "validate-pre",
-    "phase-11a",
-    "phase-11b",
-    "phase-11c",
-    "phase-11d",
-    "phase-11e",
-    "phase-11f",
-    "phase-11g",
-    "phase-11h",
-    "phase-11i",
-    "phase-11j",
-]
+GATE_ORDER = {
+    "agentic-starter-kits-skills:run-behavioral-tests": [
+        "phase-1", "phase-2", "phase-3", "phase-4", "phase-5",
+        "phase-6", "phase-7", "phase-8", "phase-9", "phase-10",
+    ],
+    "agentic-starter-kits-skills:add-integration-tests": [
+        "phase-2-files", "phase-3-makefile", "phase-4-ci",
+        "phase-5a-collect", "phase-5b-live", "phase-5c-consistency",
+    ],
+}
 
 
 def detect_cluster_info() -> Dict[str, str]:
@@ -273,21 +269,30 @@ def detect_cluster_info() -> Dict[str, str]:
     return info
 
 
-def build_report_template(command_criteria: Dict[str, Any], agent_path: str) -> str:
+def build_report_template(command_criteria: Dict[str, Any], agent_path: str, skill_name: str) -> str:
     parts = agent_path.split("/") if agent_path else []
     framework = parts[0] if len(parts) >= 1 else "<framework>"
     agent_name = parts[-1] if parts else "<agent_name>"
 
+    skill_short = skill_name.split(":")[-1]
+
+    if skill_name.endswith(":run-behavioral-tests"):
+        report_path = f"tests/behavioral/reports/BTEST_VALIDATION_REPORT_{agent_name}.md"
+    elif skill_name.endswith(":add-integration-tests"):
+        report_path = f"tests/integration/reports/ITEST_VALIDATION_REPORT_{agent_name}.md"
+    else:
+        report_path = f"reports/VALIDATION_REPORT_{agent_name}.md"
+
     cluster = detect_cluster_info()
 
     lines = [
-        '<eval-report command="add-behavioral-tests">',
-        "Generate a Phase 11 validation report. Fill in every [ ] with PASS, FAIL, WAIVED, or SKIPPED based on what happened during this session.",
-        f"Write the completed report to: tests/behavioral/reports/BTEST_VALIDATION_REPORT_{agent_name}.md",
+        f'<eval-report command="{skill_short}">',
+        "Generate a Validation report. Fill in every [ ] with PASS, FAIL, WAIVED, or SKIPPED based on what happened during this session.",
+        f"Write the completed report to: {report_path}",
         "",
         "---",
         "",
-        f"# Behavioral Test Validation Report: {agent_name}",
+        f"# Validation Report: {agent_name}",
         "",
         f"**Agent**: `agents/{agent_path}/`",
         "**Date**: <fill in>",
@@ -311,11 +316,11 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str) -> 
         lines.append(f"| pre | [ ] | {count} | Skill invocation |")
 
     gates = command_criteria.get("gates", {})
-    for gate_id in GATE_ORDER:
+    for gate_id in GATE_ORDER.get(skill_name, []):
         gate = gates.get(gate_id)
         if gate:
             count = len(gate.get("assertions", []))
-            hard = " **HARD GATE**" if gate_id == "phase-11b" else ""
+            hard = " **HARD GATE**" if gate_id == "phase-2" else ""
             all_gates.append((gate_id, gate))
             lines.append(f"| {gate_id} | [ ] | {count} | {gate.get('description', '')}{hard} |")
 
@@ -352,22 +357,25 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str) -> 
     lines.append("| Jira Key | Summary | Phase |")
     lines.append("| -------- | ------- | ----- |")
     lines.append("| <fill in or remove if none> | | |")
-    lines.append("")
-    lines.append("## MLflow Trace Summary")
-    lines.append("")
-    lines.append("- **Experiment**: <fill in>")
-    lines.append("- **Total traces**: <fill in>")
-    lines.append("- **TOOL spans found**: <yes/no>")
-    lines.append("- **CHAT_MODEL spans found**: <yes/no>")
-    lines.append("- **Framework spans found**: <yes/no>")
-    lines.append("- **Enrichment mode**: <MLflow traces / content heuristics (degraded)>")
-    lines.append("")
-    lines.append("## EvalHub E2E Summary")
-    lines.append("")
-    lines.append("- **Job state**: <completed/failed>")
-    lines.append("- **Scores**: <fill in>")
-    lines.append("- **Adapter image**: <fill in>")
-    lines.append("- **Fixture path**: <fill in>")
+
+    if skill_name.endswith(":run-behavioral-tests"):
+        lines.append("")
+        lines.append("## MLflow Trace Summary")
+        lines.append("")
+        lines.append("- **Experiment**: <fill in>")
+        lines.append("- **Total traces**: <fill in>")
+        lines.append("- **TOOL spans found**: <yes/no>")
+        lines.append("- **CHAT_MODEL spans found**: <yes/no>")
+        lines.append("- **Framework spans found**: <yes/no>")
+        lines.append("- **Enrichment mode**: <MLflow traces / content heuristics (degraded)>")
+        lines.append("")
+        lines.append("## EvalHub E2E Summary")
+        lines.append("")
+        lines.append("- **Job state**: <completed/failed>")
+        lines.append("- **Scores**: <fill in>")
+        lines.append("- **Adapter image**: <fill in>")
+        lines.append("- **Fixture path**: <fill in>")
+
     lines.append("")
     lines.append("---")
     lines.append("</eval-report>")
@@ -465,8 +473,8 @@ def main():
 
     full_context = f"{status}\n{context}"
 
-    if phase == "post" and skill_name.endswith((":add-behavioral-tests", ":add-integration-tests")):
-        report = build_report_template(command_criteria, agent_path)
+    if phase == "post" and skill_name in GATE_ORDER:
+        report = build_report_template(command_criteria, agent_path, skill_name)
         full_context = f"{full_context}\n\n{report}"
 
     emit_output(hook_event, additional_context=full_context, reason=status)
