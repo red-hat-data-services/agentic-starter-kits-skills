@@ -1,5 +1,9 @@
 {
   "agentic-starter-kits-skills:run-behavioral-tests": {
+    "report": {
+      "path": "tests/behavioral/reports/BTEST_VALIDATION_REPORT_{agent_name}.md",
+      "sections": ["mlflow", "evalhub"]
+    },
     "pre": {
       "description": "Pre-flight checks — all scaffolding phases (0-10) complete",
       "procedure": "For MLflow checks: run mlflow-procedures.json: check-token-validity first, then mlflow-procedures.json: get-experiment-id. If either fails, MLflow is not reachable — do not proceed to Phase 1.",
@@ -131,6 +135,7 @@
       },
       "phase-2": {
         "description": "HARD GATE: tool_calls came from MLflow traces, not content heuristics",
+        "hard_gate": true,
         "assertions": [
           {
             "id": "no-enrichment-failure",

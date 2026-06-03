@@ -229,18 +229,6 @@ def format_status_line(
     return f"[eval-gate] {phase_label}: {command} — {', '.join(parts)}"
 
 
-GATE_ORDER = {
-    "agentic-starter-kits-skills:run-behavioral-tests": [
-        "phase-1", "phase-2", "phase-3", "phase-4", "phase-5",
-        "phase-6", "phase-7", "phase-8", "phase-9", "phase-10",
-    ],
-    "agentic-starter-kits-skills:add-integration-tests": [
-        "phase-2-files", "phase-3-makefile", "phase-4-ci",
-        "phase-5a-collect", "phase-5b-live", "phase-5c-consistency",
-    ],
-}
-
-
 def detect_cluster_info() -> Dict[str, str]:
     info = {"cluster": "<unknown>", "namespace": "<unknown>", "server": "<unknown>"}
     try:
@@ -271,17 +259,12 @@ def detect_cluster_info() -> Dict[str, str]:
 
 def build_report_template(command_criteria: Dict[str, Any], agent_path: str, skill_name: str) -> str:
     parts = agent_path.split("/") if agent_path else []
-    framework = parts[0] if len(parts) >= 1 else "<framework>"
     agent_name = parts[-1] if parts else "<agent_name>"
 
     skill_short = skill_name.split(":")[-1]
-
-    if skill_name.endswith(":run-behavioral-tests"):
-        report_path = f"tests/behavioral/reports/BTEST_VALIDATION_REPORT_{agent_name}.md"
-    elif skill_name.endswith(":add-integration-tests"):
-        report_path = f"tests/integration/reports/ITEST_VALIDATION_REPORT_{agent_name}.md"
-    else:
-        report_path = f"reports/VALIDATION_REPORT_{agent_name}.md"
+    report_config = command_criteria.get("report", {})
+    report_path = report_config.get("path", "reports/VALIDATION_REPORT_{agent_name}.md").format(agent_name=agent_name)
+    sections = report_config.get("sections", [])
 
     cluster = detect_cluster_info()
 
@@ -316,13 +299,11 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str, ski
         lines.append(f"| pre | [ ] | {count} | Skill invocation |")
 
     gates = command_criteria.get("gates", {})
-    for gate_id in GATE_ORDER.get(skill_name, []):
-        gate = gates.get(gate_id)
-        if gate:
-            count = len(gate.get("assertions", []))
-            hard = " **HARD GATE**" if gate_id == "phase-2" else ""
-            all_gates.append((gate_id, gate))
-            lines.append(f"| {gate_id} | [ ] | {count} | {gate.get('description', '')}{hard} |")
+    for gate_id, gate in gates.items():
+        count = len(gate.get("assertions", []))
+        hard = " **HARD GATE**" if gate.get("hard_gate") else ""
+        all_gates.append((gate_id, gate))
+        lines.append(f"| {gate_id} | [ ] | {count} | {gate.get('description', '')}{hard} |")
 
     post = command_criteria.get("post")
     if post:
@@ -358,7 +339,7 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str, ski
     lines.append("| -------- | ------- | ----- |")
     lines.append("| <fill in or remove if none> | | |")
 
-    if skill_name.endswith(":run-behavioral-tests"):
+    if "mlflow" in sections:
         lines.append("")
         lines.append("## MLflow Trace Summary")
         lines.append("")
@@ -368,6 +349,8 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str, ski
         lines.append("- **CHAT_MODEL spans found**: <yes/no>")
         lines.append("- **Framework spans found**: <yes/no>")
         lines.append("- **Enrichment mode**: <MLflow traces / content heuristics (degraded)>")
+
+    if "evalhub" in sections:
         lines.append("")
         lines.append("## EvalHub E2E Summary")
         lines.append("")
@@ -473,7 +456,7 @@ def main():
 
     full_context = f"{status}\n{context}"
 
-    if phase == "post" and skill_name in GATE_ORDER:
+    if phase == "post" and "report" in command_criteria:
         report = build_report_template(command_criteria, agent_path, skill_name)
         full_context = f"{full_context}\n\n{report}"
 

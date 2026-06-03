@@ -69,6 +69,19 @@ Verify ALL of the following:
 12. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
 13. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
 14. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`) is set and points to the deployed OpenShift route
+15. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
+
+### Mandatory: Refresh MLflow tokens before testing
+
+**BLOCKING — do this before Phase 1, every time.** OpenShift tokens expire frequently and behavioral tests depend on MLflow trace enrichment. Do NOT assume tokens are valid just because the agent health endpoint returns 200 — `/health` succeeds even when tracing is completely broken.
+
+Run the `deploy-agents` skill in token-only mode to refresh all agent tokens:
+
+```
+/agentic-starter-kits-skills:deploy-agents --token-only
+```
+
+This refreshes `MLFLOW_TRACKING_TOKEN` secrets for ALL deployed agents, restarts rollouts, and verifies tracing is working (Step 4 of deploy-agents). Wait for all rollouts to complete and confirm `[Tracing Enabled]` appears in each agent's startup logs before proceeding to Phase 1.
 
 If any check fails, stop and report which pre-flight check failed. Do not proceed to Phase 1.
 
@@ -83,7 +96,7 @@ MLflow env vars are REQUIRED for behavioral tests — without them, tool_calls c
 cd /path/to/agentic-starter-kits
 
 # Collect tests (verify discovery)
-uv run --extra test python -m pytest agents/<framework>/<agent_name>/tests/behavioral/ --collect-only
+uv run --extra test --extra test-mlflow pytest agents/<framework>/<agent_name>/tests/behavioral/ --collect-only
 
 # Run against live agent with MLflow enabled (ALL six env vars required for OpenShift MLflow)
 <AGENT_ENV_VAR>=https://<route> \
@@ -92,7 +105,7 @@ MLFLOW_EXPERIMENT_NAME=<experiment> \
 MLFLOW_TRACKING_TOKEN=$(oc whoami -t) \
 MLFLOW_WORKSPACE=<namespace> \
 MLFLOW_TRACKING_INSECURE_TLS=true \
-uv run --extra test python -m pytest agents/<framework>/<agent_name>/tests/behavioral/ -v
+uv run --extra test --extra test-mlflow pytest agents/<framework>/<agent_name>/tests/behavioral/ -v
 ```
 
 **`MLFLOW_WORKSPACE` is mandatory for OpenShift MLflow** — without it the MLflow API returns `INVALID_PARAMETER_VALUE: Workspace context is required for this request`. Set it to the OpenShift namespace (e.g. the value from `oc project -q`).

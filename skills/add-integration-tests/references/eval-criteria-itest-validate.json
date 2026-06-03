@@ -1,5 +1,9 @@
 {
   "agentic-starter-kits-skills:add-integration-tests": {
+    "report": {
+      "path": "tests/integration/reports/ITEST_VALIDATION_REPORT_{agent_name}.md",
+      "sections": []
+    },
     "pre": {
       "description": "Skill invocation pre-conditions",
       "assertions": [
