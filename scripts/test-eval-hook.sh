@@ -278,58 +278,15 @@ run_test_absent \
     "permissionDecision"
 
 run_test \
-    "post gate has exec assertions (dod-satisfied)" \
+    "post gate has exec assertions (tests-dir)" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
     "output" \
-    "dod-satisfied"
+    "tests-dir"
 
-run_test \
-    "post gate has eval assertions (11a-passed)" \
+run_test_absent \
+    "PostToolUse does NOT include report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "11a-passed"
-
-run_test \
-    "PostToolUse includes report template" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
     "eval-report"
-
-run_test \
-    "report template has agent name" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "agentic_rag"
-
-run_test \
-    "report template has summary table" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "| Gate | Result |"
-
-run_test \
-    "report template has all gates" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "phase-11e"
-
-run_test \
-    "report template has MLflow section" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "MLflow Trace Summary"
-
-run_test \
-    "report template has EvalHub section" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "EvalHub E2E Summary"
-
-run_test \
-    "report template has output path" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "tests/behavioral/reports/BTEST_VALIDATION_REPORT_agentic_rag.md"
 
 run_test_absent \
     "PreToolUse does NOT include report template" \
@@ -483,6 +440,143 @@ run_test \
     "eval-gate"
 
 # ===================================================================
+# run-behavioral-tests skill tests
+# ===================================================================
+
+echo ""
+echo "--- run-behavioral-tests: PreToolUse ---"
+
+run_test \
+    "emits eval-gate XML" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "includes permissionDecision" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "permissionDecision"
+
+run_test \
+    "includes pre-conditions text" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "pre-conditions before proceeding"
+
+run_test \
+    "runs exec assertions (shows PASS or FAIL)" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "Executable assertion results"
+
+run_test \
+    "includes assertion IDs (oc-auth)" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "oc-auth"
+
+run_test \
+    "includes eval assertions for Claude" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "Pass if:"
+
+run_test \
+    "status line shows assertion counts" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "assertions"
+
+run_test \
+    "status line shows correct skill name" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "agentic-starter-kits-skills:run-behavioral-tests"
+
+echo ""
+echo "--- run-behavioral-tests: PostToolUse ---"
+
+run_test \
+    "emits eval-gate XML" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "includes post-conditions text" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "post-conditions to confirm success"
+
+run_test_absent \
+    "PostToolUse does NOT include permissionDecision" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "permissionDecision"
+
+run_test \
+    "post gate has eval assertions (report-generated)" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "report-generated"
+
+run_test \
+    "PostToolUse includes report template" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "eval-report"
+
+run_test \
+    "report template has agent name" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "agentic_rag"
+
+run_test \
+    "report template has summary table" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "| Gate | Result |"
+
+run_test \
+    "report template has renumbered gates (phase-5 not phase-11e)" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "phase-5"
+
+run_test \
+    "report template has MLflow section" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "MLflow Trace Summary"
+
+run_test \
+    "report template has EvalHub section" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "EvalHub E2E Summary"
+
+run_test_absent \
+    "PreToolUse does NOT include report template" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "eval-report"
+
+echo ""
+echo "--- run-behavioral-tests: Edge cases ---"
+
+run_test \
+    "No args still emits eval assertions" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":""}}' \
+    "output" \
+    "eval-gate"
+
+run_test \
+    "Args without slash — agent path empty, exec assertions still run" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"RHAIENG-5460"}}' \
+    "output" \
+    "eval-gate"
+
+# ===================================================================
 # Cross-skill isolation
 # ===================================================================
 
@@ -514,10 +608,9 @@ run_test_absent \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:deploy-agents","args":"crewai/websearch_agent"}}' \
     "eval-report"
 
-run_test \
-    "add-behavioral-tests PostToolUse DOES include eval-report template" \
+run_test_absent \
+    "add-behavioral-tests PostToolUse does NOT include eval-report template" \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
     "eval-report"
 
 run_test \
@@ -525,6 +618,22 @@ run_test \
     '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-integration-tests","args":"google/adk"}}' \
     "output" \
     "eval-report"
+
+run_test \
+    "run-behavioral-tests PostToolUse DOES include eval-report template" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "output" \
+    "eval-report"
+
+run_test_absent \
+    "run-behavioral-tests PreToolUse does NOT emit deploy-agents content" \
+    '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "helm-installed"
+
+run_test_absent \
+    "add-behavioral-tests PostToolUse does NOT emit run-behavioral-tests gate content" \
+    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:add-behavioral-tests","args":"langgraph/agentic_rag"}}' \
+    "report-generated"
 
 # ===================================================================
 # Cross-plugin isolation

@@ -71,597 +71,71 @@
             "pass_if": "For every deployment in the namespace that has MLFLOW_TRACKING_TOKEN, the env var uses valueFrom.secretKeyRef (not a plain value field)"
           }
         ]
-      },
-      "validate-pre": {
-        "description": "Phase 11 pre-conditions \u2014 all prior phases (1-10) complete",
-        "procedure": "For MLflow checks: run mlflow-procedures.json: check-token-validity first, then mlflow-procedures.json: get-experiment-id. If either fails, MLflow is not reachable \u2014 do not proceed to 11a.",
-        "assertions": [
-          {
-            "id": "oc-auth",
-            "type": "exec",
-            "command": "oc whoami",
-            "on_fail": "block",
-            "description": "Logged into OpenShift cluster"
-          },
-          {
-            "id": "oc-token",
-            "type": "exec",
-            "command": "oc whoami -t",
-            "on_fail": "block",
-            "description": "OpenShift token is valid (not expired)"
-          },
-          {
-            "id": "tests-dir",
-            "type": "exec",
-            "command": "test -f agents/${AGENT_PATH}/tests/behavioral/conftest.py",
-            "on_fail": "block",
-            "description": "tests/behavioral/conftest.py exists (Phase 4 complete)"
-          },
-          {
-            "id": "golden-queries",
-            "type": "exec",
-            "command": "test -f agents/${AGENT_PATH}/tests/behavioral/fixtures/golden_queries.yaml",
-            "on_fail": "block",
-            "description": "golden_queries.yaml fixture exists (Phase 4 complete)"
-          },
-          {
-            "id": "evalhub-fixture",
-            "type": "exec",
-            "command": "test -f agents/${AGENT_PATH}/evalhub/tool_use.yaml",
-            "on_fail": "block",
-            "description": "EvalHub fixture exists (Phase 6 complete)"
-          },
-          {
-            "id": "containerfile-updated",
-            "type": "exec",
-            "command": "grep -q '${AGENT_SHORT}' evals/evalhub_adapter/Containerfile",
-            "on_fail": "block",
-            "description": "Containerfile has COPY line for agent (Phase 6 complete)"
-          },
-          {
-            "id": "thresholds-updated",
-            "type": "exec",
-            "command": "grep -q '${AGENT_KEY}' tests/behavioral/configs/thresholds.yaml",
-            "on_fail": "block",
-            "description": "thresholds.yaml has agent section (Phase 5 complete)"
-          },
-          {
-            "id": "run-e2e-updated",
-            "type": "exec",
-            "command": "grep -q '${AGENT_ROUTE_VAR}' evals/evalhub_adapter/tests/run-e2e.sh",
-            "on_fail": "block",
-            "description": "run-e2e.sh updated with agent blocks (Phase 10 complete)"
-          },
-          {
-            "id": "agent-health",
-            "type": "eval",
-            "description": "Agent deployed and reachable (health endpoint returns OK)",
-            "pass_if": "curl -sf https://<AGENT_ROUTE>/health returns HTTP 200"
-          },
-          {
-            "id": "mlflow-uri",
-            "type": "eval",
-            "description": "MLFLOW_TRACKING_URI set to the cluster MLflow instance",
-            "pass_if": "Environment variable is set and points to a valid MLflow URL"
-          },
-          {
-            "id": "mlflow-experiment",
-            "type": "eval",
-            "description": "MLFLOW_EXPERIMENT_NAME set",
-            "pass_if": "Environment variable is set to a meaningful experiment name"
-          },
-          {
-            "id": "mlflow-workspace",
-            "type": "eval",
-            "description": "MLFLOW_WORKSPACE set to the OpenShift namespace",
-            "pass_if": "Set to the same namespace as oc project -q"
-          },
-          {
-            "id": "mlflow-insecure",
-            "type": "eval",
-            "description": "MLFLOW_TRACKING_INSECURE_TLS=true set",
-            "pass_if": "Set to true for OpenShift clusters with self-signed certs"
-          },
-          {
-            "id": "agent-url-var",
-            "type": "eval",
-            "description": "Agent URL env var set with correct route",
-            "pass_if": "Agent-specific URL env var (e.g. CREWAI_WEBSEARCH_AGENT_URL) is set and points to the deployed OpenShift route"
-          }
-        ]
-      },
-      "phase-11a": {
-        "description": "Pytest behavioral tests passed with MLflow enrichment",
-        "assertions": [
-          {
-            "id": "collect-only",
-            "type": "exec",
-            "command": "uv run --extra test --extra test-mlflow pytest agents/${AGENT_PATH}/tests/behavioral/ --collect-only -q",
-            "on_fail": "block",
-            "description": "Test collection succeeds with no import errors or missing fixtures"
-          },
-          {
-            "id": "all-pass",
-            "type": "eval",
-            "description": "All collected tests run and pass (exit code 0)",
-            "pass_if": "pytest output shows all tests PASSED, exit code 0, no FAILED or ERROR lines"
-          },
-          {
-            "id": "mlflow-env-set",
-            "type": "eval",
-            "description": "Six MLflow env vars were set in the pytest invocation",
-            "pass_if": "The pytest command included MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_TOKEN, MLFLOW_WORKSPACE, MLFLOW_TRACKING_INSECURE_TLS, and agent URL var"
-          },
-          {
-            "id": "no-skip-xfail",
-            "type": "eval",
-            "description": "No unexpected skipped or xfailed tests",
-            "pass_if": "No tests were skipped or xfailed unless documented in the agent README testing section"
-          }
-        ]
-      },
-      "phase-11b": {
-        "description": "HARD GATE: tool_calls came from MLflow traces, not content heuristics",
-        "assertions": [
-          {
-            "id": "no-enrichment-failure",
-            "type": "eval",
-            "description": "No 'MLflow enrichment failed' warning in test output",
-            "pass_if": "pytest output does NOT contain 'MLflow enrichment failed'"
-          },
-          {
-            "id": "no-tool-calls-warning",
-            "type": "eval",
-            "description": "No 'tool_calls not exposed in response' warning in test output",
-            "pass_if": "pytest output does NOT contain 'tool_calls not exposed in response'"
-          },
-          {
-            "id": "f1-scoring-ran",
-            "type": "eval",
-            "description": "score_tool_selection() ran with F1 scoring",
-            "pass_if": "Tool selection tests used F1-based scoring (precision/recall), not content keyword matching. Check that score_tool_selection was called and produced numeric scores."
-          },
-          {
-            "id": "all-scorers-ran",
-            "type": "eval",
-            "description": "score_hallucinated_tools() and score_tool_call_validity() executed",
-            "pass_if": "Both hallucination and validity scorers ran without error. Check test output for assertion results from these scorers."
-          },
-          {
-            "id": "tool-calls-populated",
-            "type": "eval",
-            "description": "tool_calls list is non-empty for tool-triggering queries",
-            "pass_if": "For golden queries with expected_tools, the result.tool_calls list was populated (not empty). Check that F1 scores are > 0."
-          }
-        ],
-        "waiver": {
-          "condition": "Phase 2a determined tracing is missing/broken AND a Jira bug was filed under parent epic",
-          "action": "Document degraded mode in agent README testing section (Phase 8 item 5), reference the bug ticket, note expected behavior once tracing is fixed"
-        }
-      },
-      "phase-11c": {
-        "description": "MLflow trace structure verified",
-        "procedure": "Run mlflow-procedures.json: inspect-span-types to get the full span tree. This is the ONLY way to verify trace structure \u2014 do not guess or skip.",
-        "assertions": [
-          {
-            "id": "tool-spans",
-            "type": "eval",
-            "description": "TOOL spans exist with names matching agent tool names",
-            "pass_if": "inspect-span-types output shows [TOOL] spans. Span names match the agent's defined tool names (from Phase 1 step 2)."
-          },
-          {
-            "id": "chat-model-spans",
-            "type": "eval",
-            "description": "CHAT_MODEL spans exist with tokenUsage attributes",
-            "pass_if": "inspect-span-types output shows [CHAT_MODEL] spans with tokenUsage values."
-          },
-          {
-            "id": "framework-spans",
-            "type": "eval",
-            "description": "Framework-specific spans exist",
-            "pass_if": "inspect-span-types output shows framework spans: [CHAIN] for LangGraph/LangChain, [AGENT] for CrewAI, [RETRIEVER] for RAG agents, etc."
-          },
-          {
-            "id": "trace-depth",
-            "type": "eval",
-            "description": "Trace hierarchy has expected depth (not flat)",
-            "pass_if": "inspect-span-types output shows spans with different parent_id values \u2014 not all parent=ROOT. At least 2 levels of nesting."
-          }
-        ],
-        "verify_with": [
-          "inspect-span-types"
-        ]
-      },
-      "phase-11d": {
-        "description": "Agent pod logs clean",
-        "assertions": [
-          {
-            "id": "no-mlflow-errors",
-            "type": "eval",
-            "description": "No MLflow connection errors or auth failures in recent logs",
-            "pass_if": "oc logs output does NOT contain 'connection refused', 'auth', '401', '403', or 'MLFLOW' error patterns"
-          },
-          {
-            "id": "tracing-init",
-            "type": "eval",
-            "description": "Tracing initialization message present",
-            "pass_if": "Logs contain evidence of tracing setup: 'tracing enabled', 'MLflow', 'enable_tracing', or similar initialization messages"
-          },
-          {
-            "id": "no-span-failures",
-            "type": "eval",
-            "description": "No span creation failure warnings",
-            "pass_if": "Logs do NOT contain 'span', 'trace', or 'export' error/warning messages indicating failed span creation"
-          },
-          {
-            "id": "no-unhandled-exceptions",
-            "type": "eval",
-            "description": "No unhandled exceptions related to MLflow or tracing",
-            "pass_if": "No Python tracebacks or unhandled exception messages related to mlflow, opentelemetry, or tracing modules"
-          }
-        ],
-        "verify_commands": [
-          "oc logs deployment/<AGENT_NAME> -n <NAMESPACE> --tail=50"
-        ]
-      },
-      "phase-11e": {
-        "description": "Run EvalHub E2E job",
-        "assertions": [
-          {
-            "id": "route-discovered",
-            "type": "eval",
-            "description": "Agent route discovered by run-e2e.sh",
-            "pass_if": "Script output shows the agent's route was found (route variable is non-empty, no 'route not found' error)"
-          },
-          {
-            "id": "image-built",
-            "type": "eval",
-            "description": "Adapter image built and pushed with new fixture",
-            "pass_if": "Build output shows successful image build and push. The COPY'd fixture directory appears in the build log."
-          },
-          {
-            "id": "job-completed",
-            "type": "eval",
-            "description": "Eval job for the new agent has state=completed",
-            "pass_if": "Job polling output shows state: completed (not failed, error, or timeout)"
-          },
-          {
-            "id": "scores-valid",
-            "type": "eval",
-            "description": "Scores are non-null and reasonable (not all zeros)",
-            "pass_if": "Result scores are numeric, non-null, and at least some are > 0. All-zero scores indicate fixture loading or scoring failure."
-          },
-          {
-            "id": "no-fixture-errors",
-            "type": "eval",
-            "description": "No fixture loading errors in job logs",
-            "pass_if": "Job output does NOT contain 'FileNotFoundError', 'fixture not found', or YAML parsing errors for the agent's fixture"
-          },
-          {
-            "id": "other-agents-non-blocking",
-            "type": "eval",
-            "description": "Failures in OTHER agents' jobs that are unrelated to tracing do NOT block",
-            "pass_if": "Only failures unrelated to MLflow tracing in other agents' jobs can be treated as pre-existing. mlflow_run_id null is NEVER pre-existing \u2014 it is always a FAIL regardless of which agent produced it."
-          }
-        ],
-        "verify_commands": [
-          "cd evals/evalhub_adapter/tests && ./run-e2e.sh"
-        ]
-      },
-      "phase-11f": {
-        "description": "Verify E2E MLflow enrichment (mirrors 11b for EvalHub run)",
-        "procedure": "Step 1: Run mlflow-procedures.json: count-traces-since to verify new traces appeared after the E2E run. Step 2: Check the E2E job output for mlflow_run_id values and enrichment warnings.",
-        "assertions": [
-          {
-            "id": "e2e-mlflow-run-id-present",
-            "type": "eval",
-            "description": "mlflow_run_id is non-null in eval results for ALL agents",
-            "pass_if": "Every agent's eval result has a non-null mlflow_run_id. A null mlflow_run_id means MLflow tracing is broken \u2014 the agent did not produce a trace. This is a FAILURE, not a pre-existing issue. Debug: check agent pod env vars (MLFLOW_TRACKING_URI, MLFLOW_TRACKING_TOKEN, MLFLOW_EXPERIMENT_NAME) with: oc get deployment/<agent> -o jsonpath='{.spec.template.spec.containers[0].env}'"
-          },
-          {
-            "id": "e2e-no-enrichment-failure",
-            "type": "eval",
-            "description": "No MLflow enrichment failures during E2E eval job",
-            "pass_if": "E2E script output does NOT contain 'MLflow enrichment failed' or 'enrichment error'. The adapter successfully extracted tool_calls from traces."
-          },
-          {
-            "id": "e2e-tool-calls-populated",
-            "type": "eval",
-            "description": "E2E eval scored tool_calls from MLflow traces, not content heuristics",
-            "pass_if": "Tool selection scores in E2E results are > 0 for queries with expected_tools. All-zero scores mean enrichment failed silently."
-          },
-          {
-            "id": "e2e-new-traces-exist",
-            "type": "eval",
-            "description": "New MLflow traces were created during the E2E run",
-            "pass_if": "Run mlflow-procedures.json: count-traces-since AFTER the E2E run. Trace count must be higher than before. If not, tracing is not producing traces for EvalHub requests."
-          }
-        ],
-        "verify_with": [
-          "count-traces-since",
-          "check-token-validity"
-        ]
-      },
-      "phase-11g": {
-        "description": "Verify E2E MLflow trace structure (mirrors 11c for EvalHub run)",
-        "procedure": "Run mlflow-procedures.json: inspect-span-types. This shows the span tree from the latest trace. Verify it against the same criteria as Phase 11c.",
-        "assertions": [
-          {
-            "id": "e2e-tool-spans",
-            "type": "eval",
-            "description": "TOOL spans produced during E2E run match agent tool names",
-            "pass_if": "inspect-span-types output shows [TOOL] spans with names matching the agent's tools. If no TOOL spans, check if the agent uses manual tracing (wrap_func_with_mlflow_trace) or autolog."
-          },
-          {
-            "id": "e2e-chat-model-spans",
-            "type": "eval",
-            "description": "CHAT_MODEL spans with tokenUsage produced during E2E run",
-            "pass_if": "inspect-span-types output shows [CHAT_MODEL] spans with tokenUsage values. Missing tokenUsage means the LLM provider autolog is not capturing usage."
-          },
-          {
-            "id": "e2e-framework-spans",
-            "type": "eval",
-            "description": "Framework-specific spans produced during E2E run",
-            "pass_if": "inspect-span-types output shows framework spans: [CHAIN] for LangGraph, [AGENT] for CrewAI, [RETRIEVER] for RAG, etc."
-          },
-          {
-            "id": "e2e-trace-depth",
-            "type": "eval",
-            "description": "E2E traces have expected nesting depth",
-            "pass_if": "inspect-span-types output shows spans with different parent_id values. At least 2 nesting levels \u2014 not all parent=ROOT."
-          }
-        ],
-        "verify_with": [
-          "inspect-span-types"
-        ]
-      },
-      "phase-11h": {
-        "description": "Check agent pod logs after E2E run (mirrors 11d for EvalHub run)",
-        "assertions": [
-          {
-            "id": "e2e-pod-no-mlflow-errors",
-            "type": "eval",
-            "description": "No MLflow connection errors or auth failures after E2E run",
-            "pass_if": "oc logs after the E2E run do NOT contain 'connection refused', 'auth', '401', '403', or 'MLFLOW' error patterns"
-          },
-          {
-            "id": "e2e-pod-tracing-active",
-            "type": "eval",
-            "description": "Tracing was active during E2E run",
-            "pass_if": "Logs show trace export activity during the E2E run window \u2014 no 'tracing disabled' or 'MLflow not configured' messages"
-          },
-          {
-            "id": "e2e-pod-no-span-failures",
-            "type": "eval",
-            "description": "No span creation failures during E2E run",
-            "pass_if": "Logs do NOT contain span, trace, or export error/warning messages indicating failed span creation"
-          },
-          {
-            "id": "e2e-pod-no-exceptions",
-            "type": "eval",
-            "description": "No unhandled exceptions during E2E run",
-            "pass_if": "No Python tracebacks or unhandled exception messages related to mlflow, opentelemetry, or tracing modules during the E2E run window"
-          }
-        ],
-        "verify_commands": [
-          "oc logs deployment/<AGENT_NAME> -n <NAMESPACE> --tail=50"
-        ]
-      },
-      "phase-11i": {
-        "description": "Inspect EvalHub adapter container",
-        "assertions": [
-          {
-            "id": "adapter-fixture-present",
-            "type": "eval",
-            "description": "Adapter container has the agent's fixture directory",
-            "pass_if": "Running ls inside the adapter pod confirms fixtures/<AGENT_SHORT>/ exists and contains tool_use.yaml. Use: oc exec deployment/evalhub-adapter -- ls fixtures/<AGENT_SHORT>/tool_use.yaml"
-          },
-          {
-            "id": "adapter-fixture-parseable",
-            "type": "eval",
-            "description": "Agent fixture YAML is parseable inside the adapter container",
-            "pass_if": "The adapter can load and parse the fixture without YAML errors. Check adapter logs for 'fixture not found' or YAML parse errors related to the agent's fixture path."
-          },
-          {
-            "id": "adapter-provider-registered",
-            "type": "eval",
-            "description": "Agent registered as a provider in EvalHub",
-            "pass_if": "EvalHub API lists the agent as a registered provider. The provider URL matches the agent's OpenShift route."
-          },
-          {
-            "id": "adapter-scoring-config",
-            "type": "eval",
-            "description": "Scoring config correct for agent (stream setting matches classification)",
-            "pass_if": "The eval job config used stream=false (default) unless the agent was classified as Standard streaming in Phase 1. Check the generated eval YAML for stream parameter."
-          },
-          {
-            "id": "adapter-logs-clean",
-            "type": "eval",
-            "description": "Adapter container logs show no errors for this agent",
-            "pass_if": "Adapter pod logs do NOT contain errors related to the agent: no connection refused, no fixture loading failures, no scoring exceptions, no timeout errors. Use: oc logs deployment/evalhub-adapter --tail=100"
-          },
-          {
-            "id": "adapter-mlflow-connectivity",
-            "type": "eval",
-            "description": "Adapter container can reach MLflow",
-            "pass_if": "Adapter logs show successful MLflow trace queries (no connection errors to MLFLOW_TRACKING_URI). If the adapter uses MLflow for enrichment, traces were fetched without auth failures."
-          }
-        ],
-        "verify_commands": [
-          "oc logs deployment/evalhub-adapter -n <NAMESPACE> --tail=100",
-          "oc exec deployment/evalhub-adapter -- ls fixtures/<AGENT_SHORT>/tool_use.yaml"
-        ]
-      },
-      "phase-11j": {
-        "description": "Cross-agent implementation consistency check (13-point verification)",
-        "assertions": [
-          {
-            "id": "cc-1-find-repo-root",
-            "type": "eval",
-            "description": "conftest.py: _find_repo_root() raises FileNotFoundError, not pytest.skip()",
-            "pass_if": "All agents' conftest.py files use raise FileNotFoundError(...) on failure, not pytest.skip(). Read each conftest and verify."
-          },
-          {
-            "id": "cc-2-mlflow-enrichment",
-            "type": "eval",
-            "description": "conftest.py: MLflow enrichment uses asyncio.to_thread + try/except + logging.warning() + warnings.warn()",
-            "pass_if": "All agents' conftest.py files have all four elements in the MLflow enrichment block: asyncio.to_thread wrapping enrich_eval_result, try/except around it, logging.warning() on failure, and warnings.warn() on failure."
-          },
-          {
-            "id": "cc-3-load-golden",
-            "type": "eval",
-            "description": "conftest.py: load_golden() function body is identical across agents",
-            "pass_if": "The load_golden() function has the same signature (category: str | None = None) and identical YAML loading logic across all agents."
-          },
-          {
-            "id": "cc-4-import-order",
-            "type": "eval",
-            "description": "conftest.py: Import block has stdlib separated from third-party (ruff I001)",
-            "pass_if": "Standard library imports (asyncio, logging, os, pathlib, warnings) are separated from third-party imports (httpx, pytest, yaml) by a blank line."
-          },
-          {
-            "id": "cc-5-run-eval-params",
-            "type": "eval",
-            "description": "conftest.py: run_eval fixture has the same parameter list across agents",
-            "pass_if": "The run_eval fixture accepts the same parameters everywhere: query, expected_tools, timeout_seconds, max_tokens_budget, model, stream."
-          },
-          {
-            "id": "cc-6-four-test-files",
-            "type": "exec",
-            "command": "test -f agents/${AGENT_PATH}/tests/behavioral/test_tool_usage.py && test -f agents/${AGENT_PATH}/tests/behavioral/test_response_quality.py && test -f agents/${AGENT_PATH}/tests/behavioral/test_cost_latency.py && test -f agents/${AGENT_PATH}/tests/behavioral/test_reliability.py",
-            "on_fail": "block",
-            "description": "All four test files exist: test_tool_usage.py, test_response_quality.py, test_cost_latency.py, test_reliability.py"
-          },
-          {
-            "id": "cc-7-pytest-marks",
-            "type": "eval",
-            "description": "Each test file uses pytestmark = pytest.mark.<agent_marker>; reliability also includes pytest.mark.slow",
-            "pass_if": "Every test file has a pytestmark assignment with the agent's marker. test_reliability.py includes both the agent marker and pytest.mark.slow."
-          },
-          {
-            "id": "cc-8-scorer-imports",
-            "type": "eval",
-            "description": "Scorer imports are consistent across agents",
-            "pass_if": "test_tool_usage.py imports score_tool_selection, score_hallucinated_tools, score_tool_call_validity. test_response_quality.py and test_reliability.py import score_plan_coherence. test_cost_latency.py imports score_latency."
-          },
-          {
-            "id": "cc-9-test-functions",
-            "type": "eval",
-            "description": "Core test functions match the existing pattern",
-            "pass_if": "Test function names may vary (single-tool vs multi-tool agents), but scorer usage and assertion structure are the same as other agents."
-          },
-          {
-            "id": "cc-10-run-eval-usage",
-            "type": "eval",
-            "description": "All test functions use the run_eval fixture \u2014 no direct HTTP calls",
-            "pass_if": "Every test function uses the run_eval fixture for agent interaction. No test makes direct httpx/requests calls to the agent URL."
-          },
-          {
-            "id": "cc-11-golden-schema",
-            "type": "eval",
-            "description": "golden_queries.yaml uses the standard schema",
-            "pass_if": "fixtures/golden_queries.yaml has queries[] with keys: query, expected_tools, expected_elements, difficulty, category."
-          },
-          {
-            "id": "cc-12-evalhub-schema",
-            "type": "eval",
-            "description": "evalhub/tool_use.yaml uses the standard schema",
-            "pass_if": "evalhub/tool_use.yaml has queries[] with keys: query, expected_tools, expected_elements (no difficulty/category)."
-          },
-          {
-            "id": "cc-13-thresholds-keys",
-            "type": "eval",
-            "description": "thresholds.yaml agent section has the same keys as other agents",
-            "pass_if": "Agent section has: tool_selection_accuracy, response_coherence_accuracy, max_latency_p95, pass_at_k \u2014 plus multi_tool_accuracy if agent has multi-tool scenarios. Keys match other agents."
-          }
-        ],
-        "verify_commands": [
-          "find agents/*/tests/behavioral -name conftest.py | sort",
-          "diff <(grep -A5 '_find_repo_root' agents/<EXISTING_AGENT>/tests/behavioral/conftest.py) <(grep -A5 '_find_repo_root' agents/${AGENT_PATH}/tests/behavioral/conftest.py)"
-        ]
       }
     },
     "post": {
-      "description": "Phase 11 validation complete \u2014 all gates passed",
+      "description": "Scaffolding complete \u2014 all Phases 0-10 artifacts created",
       "assertions": [
         {
-          "id": "11a-passed",
-          "type": "eval",
-          "description": "Phase 11a: All pytest behavioral tests passed",
-          "pass_if": "Phase 11a gate was evaluated and all assertions passed"
-        },
-        {
-          "id": "11b-passed",
-          "type": "eval",
-          "description": "Phase 11b: tool_calls enrichment gate passed (or waived)",
-          "pass_if": "Phase 11b gate passed \u2014 MLflow enrichment worked and tool_calls were populated. OR the gate was waived with a Jira bug ticket filed."
-        },
-        {
-          "id": "11c-passed",
-          "type": "eval",
-          "description": "Phase 11c: MLflow trace structure verified",
-          "pass_if": "Phase 11c gate was evaluated and TOOL, CHAT_MODEL, and framework spans were confirmed"
-        },
-        {
-          "id": "11d-passed",
-          "type": "eval",
-          "description": "Phase 11d: Agent pod logs clean",
-          "pass_if": "Phase 11d gate was evaluated and no MLflow errors found in logs"
-        },
-        {
-          "id": "11e-passed",
-          "type": "eval",
-          "description": "Phase 11e: EvalHub E2E job completed with reasonable scores",
-          "pass_if": "Phase 11e gate was evaluated and the new agent's job completed successfully"
-        },
-        {
-          "id": "11f-passed",
-          "type": "eval",
-          "description": "Phase 11f: E2E MLflow enrichment verified",
-          "pass_if": "Phase 11f gate passed \u2014 mlflow_run_id non-null for all agents, no enrichment failures, tool_calls populated from traces"
-        },
-        {
-          "id": "11g-passed",
-          "type": "eval",
-          "description": "Phase 11g: E2E MLflow trace structure verified",
-          "pass_if": "Phase 11g gate passed \u2014 TOOL, CHAT_MODEL, and framework spans confirmed in E2E traces"
-        },
-        {
-          "id": "11h-passed",
-          "type": "eval",
-          "description": "Phase 11h: Agent pod logs clean after E2E",
-          "pass_if": "Phase 11h gate passed \u2014 no MLflow errors, tracing active, no span failures"
-        },
-        {
-          "id": "11i-passed",
-          "type": "eval",
-          "description": "Phase 11i: EvalHub adapter container inspection passed",
-          "pass_if": "Phase 11i gate passed \u2014 fixture present, provider registered, adapter logs clean, MLflow reachable"
-        },
-        {
-          "id": "11j-passed",
-          "type": "eval",
-          "description": "Phase 11j: Cross-agent consistency check passed",
-          "pass_if": "Phase 11j gate was evaluated and all 13 consistency checks passed across all existing agent implementations"
-        },
-        {
-          "id": "dod-satisfied",
+          "id": "tests-dir",
           "type": "exec",
-          "command": "test -d agents/${AGENT_PATH}/tests/behavioral && test -f agents/${AGENT_PATH}/evalhub/tool_use.yaml",
+          "command": "test -f agents/${AGENT_PATH}/tests/behavioral/conftest.py",
           "on_fail": "block",
-          "description": "Definition of Done: test artifacts exist"
+          "description": "tests/behavioral/conftest.py exists"
         },
         {
-          "id": "report-generated",
-          "type": "eval",
-          "description": "Phase 11k: Validation report generated and committed",
-          "pass_if": "BTEST_VALIDATION_REPORT_<agent_name>.md was written to tests/behavioral/reports/ with all assertion results filled in (no remaining [ ] placeholders)"
+          "id": "golden-queries",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/tests/behavioral/fixtures/golden_queries.yaml",
+          "on_fail": "block",
+          "description": "golden_queries.yaml fixture exists"
         },
         {
-          "id": "jira-updated",
+          "id": "evalhub-fixture",
+          "type": "exec",
+          "command": "test -f agents/${AGENT_PATH}/evalhub/tool_use.yaml",
+          "on_fail": "block",
+          "description": "EvalHub fixture exists"
+        },
+        {
+          "id": "containerfile-updated",
+          "type": "exec",
+          "command": "grep -q '${AGENT_SHORT}' evals/evalhub_adapter/Containerfile",
+          "on_fail": "block",
+          "description": "Containerfile has COPY line for agent"
+        },
+        {
+          "id": "thresholds-updated",
+          "type": "exec",
+          "command": "grep -q '${AGENT_KEY}' tests/behavioral/configs/thresholds.yaml",
+          "on_fail": "block",
+          "description": "thresholds.yaml has agent section"
+        },
+        {
+          "id": "run-e2e-updated",
+          "type": "exec",
+          "command": "grep -q '${AGENT_ROUTE_VAR}' evals/evalhub_adapter/tests/run-e2e.sh",
+          "on_fail": "block",
+          "description": "run-e2e.sh updated with agent blocks"
+        },
+        {
+          "id": "pytest-marker",
+          "type": "exec",
+          "command": "grep -q '${AGENT_KEY}' pyproject.toml",
+          "on_fail": "block",
+          "description": "pyproject.toml has pytest marker for agent"
+        },
+        {
+          "id": "docs-updated",
           "type": "eval",
-          "description": "Jira ticket updated with results summary",
-          "pass_if": "The Jira ticket was updated with a comment summarizing Phase 11 results, including which gates passed/failed/waived"
+          "description": "All five documentation files updated per Phase 8",
+          "pass_if": "README.md, adding-behavioral-tests.md, adding-evalhub-agent-integration.md, evalhub_adapter/README.md, and agent README all updated with new agent references"
+        },
+        {
+          "id": "validation-completed",
+          "type": "eval",
+          "description": "Validation completed via /agentic-starter-kits-skills:run-behavioral-tests",
+          "pass_if": "The run-behavioral-tests skill was invoked for this agent and all validation phases passed (or failures were documented with Jira tickets). If validation has not been run yet, do NOT mark this skill complete — instruct the user to run /agentic-starter-kits-skills:run-behavioral-tests first."
         }
       ]
     }
