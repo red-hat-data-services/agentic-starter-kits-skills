@@ -96,11 +96,37 @@ Determine:
 
 **Gate**: `agentic-starter-kits-skills:add-behavioral-tests.phase-1-deploy` — consult eval-criteria. If the agent was not already deployed, verify that `/agentic-starter-kits-skills:deploy-agents` was invoked (not manual `make deploy`). This gate checks that the deploy-agents skill's Step 4 (comprehensive MLflow token refresh) ran for all agents in the namespace.
 
+**Langflow exception**: For `deploymentModel: flow-import` agents, this gate
+passes if the Langflow pod is running and `/health` returns 200. The
+`/deploy-agents` check is waived — Langflow uses flow-import deployment.
+
 ### Agent codebase inspection
 
 Gather these facts:
 
-1. **Agent location**: `agents/<framework>/<agent_name>/`. Check if the agent is non-standard (see AGENTS.md — langflow and a2a agents diverge significantly). If it lacks `main.py`, `src/`, or standard Makefile targets, stop and tell the user that this workflow does not yet support non-standard agents.
+1. **Agent location**: `agents/<framework>/<agent_name>/`. Check if the agent is non-standard (see AGENTS.md). Read `agent.yaml`:
+
+- If `deploymentModel: flow-import` (Langflow agents): Enter the Langflow
+  investigation path. These agents have no `main.py`, `src/`, `Dockerfile`,
+  or standard Makefile targets. Instead:
+  - **Tools**: Extract from the flow JSON file (`flows/*.json`) — tool
+    definitions are embedded in flow component nodes.
+  - **Response format**: Uses `/api/v1/run/{flow_id}` (supported by runner.py
+    via `api_format="langflow_run"` from RHAIENG-5389).
+  - **System prompt**: Embedded in the flow JSON agent/prompt component nodes.
+  - **Streaming**: Always `stream=false` — Langflow `/api/v1/run` does not
+    support streaming for tool extraction.
+  - **Deployment**: Langflow agents are pre-deployed via flow-import (not
+    Helm). Skip `/deploy-agents` — verify deployment via `oc get pods` and
+    `curl /health` on the Langflow route.
+  - **Flow ID**: Discover dynamically via `GET /api/v1/flows/` with a Bearer
+    token from `GET /api/v1/auto_login`. Record in `LANGFLOW_FLOW_ID`.
+  - **Tracing**: Uses Langfuse (not MLflow). Tool calls come from HTTP
+    response `content_blocks`, not MLflow traces.
+
+- If the agent lacks `main.py`, `src/`, or standard Makefile targets AND is
+  NOT a Langflow agent: stop and tell the user that this workflow does not
+  yet support this type of non-standard agent.
 2. **Tools available**: Read the agent's tool definitions (MCP server, `@tool` decorators, OpenAI function schemas). If the agent has **no tools** (pure chat agent), skip `test_tool_usage.py` in Phase 4, omit `expected_tools` from golden queries, and waive the `run-behavioral-tests` Phase 2 tool enrichment gate. Focus testing on `test_response_quality.py`, `test_cost_latency.py`, and `test_reliability.py` only.
 3. **Response format**: Read the agent's `/chat/completions` handler in `main.py`. Determine if it returns:
 
@@ -126,6 +152,12 @@ Gather these facts:
 6. **Makefile deploy target**: Note whether the Makefile exists and has standard targets (`deploy`, `run-app`). MLflow support is checked in detail in Phase 7.
 
 ## Phase 2: Verify MLflow Tracing
+
+**Langflow exception**: If `framework: langflow` in `agent.yaml`, skip Phase 2
+entirely. Langflow agents use Langfuse for tracing, and tool calls are
+extracted from the HTTP response `content_blocks` by the harness runner
+(`_extract_langflow_tool_calls()`). No MLflow verification or bug filing is
+needed. Set `tracing_source = "content_blocks"` for downstream phases.
 
 **Goal**: Confirm that the agent already has MLflow tracing integrated. MLflow tracing is the primary mechanism for extracting tool_calls from agent responses — without it, tool selection tests degrade to content-based heuristics.
 
@@ -293,6 +325,36 @@ Follow the standardized pattern used across all existing agents. Use any existin
 - `STREAM` module-level constant: set to `False` by default. Only set to `True` if the agent was classified as "Standard streaming" in Phase 1 step 5 (emits `delta.tool_calls` in standard OpenAI SSE chunks). The `_run()` function must NOT accept `stream` as a parameter — use `stream=STREAM` in TaskConfig instead.
 - `load_golden()` thin wrapper importing from `harness.fixtures` and binding `fixtures_dir`
 
+#### Langflow-specific conftest pattern
+
+For `framework: langflow` agents, the conftest differs from standard agents:
+
+1. **No MLflow enrichment block** — remove the entire
+   `if mlflow is not None and result.success: ...` section. Tool calls are
+   already populated by the runner's `_extract_langflow_tool_calls()`.
+2. **Additional env var**: `LANGFLOW_FLOW_ID` for the flow ID.
+3. **TaskConfig**: Include `api_format="langflow_run"` and `flow_id=FLOW_ID`.
+4. **No `MLflowTraceClient` import** — not needed.
+5. **`STREAM = False`** always — no streaming classification needed.
+6. **Evidence constants**: Match actual response content from external APIs
+   (e.g., "forecast", "°c", "national") — not tool names.
+
+Example:
+
+```python
+config = TaskConfig(
+    agent_url=agent_url,
+    query=query,
+    expected_tools=expected_tools,
+    timeout_seconds=timeout_seconds,
+    stream=False,
+    api_format="langflow_run",
+    flow_id=FLOW_ID,
+)
+result = await run_task(config, client=http_client)
+return result  # tool_calls already populated from content_blocks
+```
+
 ### golden_queries.yaml
 
 Design queries that **will actually trigger tool use** given the agent's system prompt:
@@ -355,6 +417,19 @@ queries:
     expected_elements: ["keyword"]
 ```
 
+#### Langflow EvalHub configuration
+
+For `framework: langflow` agents, the EvalHub job config YAML must include
+`api_format` and `flow_id` parameters:
+
+```yaml
+parameters:
+  api_format: langflow_run
+  flow_id: ${LANGFLOW_FLOW_ID}
+```
+
+The adapter's `_get_langflow_token()` handles auth automatically.
+
 ### Update Containerfile
 
 Add COPY line to `evals/evalhub_adapter/Containerfile`:
@@ -370,6 +445,10 @@ Extend the `RUN` assertion to include the new path.
 Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/react_agent/Makefile` as the reference.
 
 **If MLflow deploy support is missing**: do NOT modify the agent's Makefile. Log a Jira bug under the parent epic noting the missing MLflow Helm flags. The agent can still be deployed without MLflow — tracing just won't work on-cluster until the Makefile is updated by the agent owner.
+
+**Langflow exception**: Skip Phase 7 entirely for `framework: langflow`
+agents. They use Langfuse for tracing, not MLflow. There are no MLflow
+Helm flags to check.
 
 ## Phase 8: Documentation Updates
 
@@ -393,6 +472,17 @@ If the agent is unhealthy or the pod restarted since Phase 1, redeploy using `/a
 
 **If deployment fails**: this is a **critical blocker**. Stop and notify the user immediately. Do NOT fall back to local testing — all Phase 11 validation requires a live on-cluster deployment with MLflow tracing. Diagnose the root cause, log a Jira bug under the parent epic, and do not proceed until deployment succeeds.
 
+**Langflow exception**: For `deploymentModel: flow-import` agents, do NOT
+use `/deploy-agents`. Langflow agents are pre-deployed via flow-import.
+Verify deployment with:
+
+1. Pod running: `oc get pods -n <langflow-namespace>`
+2. Health check: `curl -sf https://<route>/health`
+3. Smoke query via `/api/v1/run/{flow_id}` (not `/chat/completions`)
+
+If unhealthy, notify the user — Langflow redeployment requires flow
+re-import, not `make deploy`.
+
 ## Phase 10: Update run-e2e.sh
 
 The E2E script (`evals/evalhub_adapter/tests/run-e2e.sh`) auto-discovers agents and submits EvalHub jobs. It must be updated to include the new agent:
@@ -409,6 +499,17 @@ Reference the existing agent blocks in the script for the pattern. Each agent ne
 
 **Stream parameter in generated YAML**: Do NOT add `stream: true` to the generated eval config unless the agent was classified as "Standard streaming" in Phase 1 step 5. The adapter defaults to `stream=false`, which is correct for most agents. If omitted from the YAML, the default applies.
 
+#### Langflow E2E additions
+
+The Langflow E2E block requires:
+- **Route discovery**: `oc get route -n langflow-agent langflow`
+  (separate namespace from standard agents)
+- **Flow ID discovery**: `GET /api/v1/flows/` with Bearer token
+- **Auth token**: `GET /api/v1/auto_login` for Bearer token
+- **Job YAML**: Include `api_format: langflow_run` and `flow_id` parameters
+- **Conditional execution**: Guard with `if [[ -f eval-langflow-*.yaml ]]`
+  so the script doesn't fail if Langflow is not deployed
+
 ## Phase 11: Run Validation
 
 Invoke the validation skill to execute all test validation phases:
@@ -416,6 +517,24 @@ Invoke the validation skill to execute all test validation phases:
 `/agentic-starter-kits-skills:run-behavioral-tests <agent_path>`
 
 This runs pytest, verifies MLflow traces, executes EvalHub E2E, performs cross-agent consistency checks, and generates the validation report. See the `run-behavioral-tests` skill for full validation details.
+
+### Langflow validation exceptions
+
+The following exceptions apply when `framework: langflow` in `agent.yaml`:
+
+**Phase 11b exception**: This gate is WAIVED for `framework: langflow` agents.
+Tool calls come from HTTP response `content_blocks` (via
+`_extract_langflow_tool_calls()` in runner.py), not from MLflow trace
+enrichment. No enrichment warning check is needed. The gate passes if
+`result.tool_calls` is non-empty after `run_task()` returns.
+
+**Phase 11c, 11f, 11g exception**: SKIP for `framework: langflow` agents. These agents
+use Langfuse for tracing, not MLflow. There are no MLflow traces to inspect.
+
+**Phase 11j cross-agent consistency exception**: Langflow agents have NO MLflow enrichment block in
+conftest.py — this is correct and expected. The consistency check should
+verify that Langflow conftest uses `api_format='langflow_run'` and `flow_id`
+instead.
 
 ## Definition of Done
 

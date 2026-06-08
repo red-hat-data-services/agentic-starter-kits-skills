@@ -18,11 +18,11 @@
           "description": "Agent directory exists under agents/"
         },
         {
-          "id": "standard-agent",
-          "type": "exec",
-          "command": "test -f agents/${AGENT_PATH}/main.py",
+          "id": "agent-pattern-check",
+          "description": "Agent matches a supported pattern (standard or Langflow)",
+          "type": "eval",
           "on_fail": "warn",
-          "description": "Agent has main.py (standard agent pattern)"
+          "criteria": "Standard agents have main.py; Langflow agents have agent.yaml with deploymentModel: flow-import and a flows/ directory. At least one pattern must match."
         },
         {
           "id": "agent-arg",
@@ -69,6 +69,13 @@
             "type": "eval",
             "description": "No agent in the namespace has a hardcoded MLFLOW_TRACKING_TOKEN value. /deploy-agents Step 4e checks all agents \u2014 if any have hardcoded tokens, /deploy-agents was not run or did not complete Step 4.",
             "pass_if": "For every deployment in the namespace that has MLFLOW_TRACKING_TOKEN, the env var uses valueFrom.secretKeyRef (not a plain value field)"
+          },
+          {
+            "id": "langflow-deploy-waiver",
+            "description": "Langflow agents: deployment gate passes if pod is running and /health returns 200 (no /deploy-agents required)",
+            "type": "eval",
+            "criteria": "For framework=langflow: oc get pods shows langflow pod Running, curl /health returns 200. /deploy-agents check is waived.",
+            "applies_when": "framework == langflow"
           }
         ]
       }
@@ -130,6 +137,22 @@
           "type": "eval",
           "description": "All five documentation files updated per Phase 8",
           "pass_if": "README.md, adding-behavioral-tests.md, adding-evalhub-agent-integration.md, evalhub_adapter/README.md, and agent README all updated with new agent references"
+        },
+        {
+          "id": "langflow-content-blocks-waiver",
+          "description": "Langflow agents extract tool_calls from content_blocks, not MLflow — enrichment gate waived",
+          "type": "eval",
+          "criteria": "For framework=langflow: result.tool_calls is non-empty after run_task() (populated by _extract_langflow_tool_calls). MLflow enrichment check is waived.",
+          "waives": ["no-enrichment-warning", "scorer-execution", "enrichment-all-pass"],
+          "applies_when": "framework == langflow"
+        },
+        {
+          "id": "langflow-no-mlflow-traces",
+          "description": "Langflow uses Langfuse, not MLflow — trace structure checks (11c, 11f, 11g) skipped",
+          "type": "eval",
+          "criteria": "Gates 11c, 11f, 11g are skipped for framework=langflow. No MLflow traces to verify.",
+          "applies_when": "framework == langflow",
+          "result": "SKIP"
         },
         {
           "id": "validation-completed",
