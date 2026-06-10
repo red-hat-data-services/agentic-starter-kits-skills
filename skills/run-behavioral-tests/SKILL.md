@@ -63,13 +63,15 @@ Verify ALL of the following:
 6. **Containerfile**: `evals/evalhub_adapter/Containerfile` contains COPY line for agent (Phase 6 complete)
 7. **Thresholds**: `tests/behavioral/configs/thresholds.yaml` has agent section (Phase 5 complete)
 8. **E2E script**: `evals/evalhub_adapter/tests/run-e2e.sh` updated with agent blocks (Phase 10 complete)
-9. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
-10. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
-11. **MLFLOW_EXPERIMENT_NAME**: Set to a meaningful experiment name
-12. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
-13. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
-14. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`) is set and points to the deployed OpenShift route
-15. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
+9. **Pytest runner script**: `tests/behavioral/deterministic/run-btests-pytest.sh` AGENTS array includes the agent (Phase 5 complete)
+10. **Shared conftest**: `tests/behavioral/conftest.py` `_AGENT_URL_MAP` includes the agent marker (Phase 5 complete)
+11. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
+12. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
+13. **MLFLOW_EXPERIMENT_NAME**: Set to a meaningful experiment name
+14. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
+15. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
+16. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`) is set and points to the deployed OpenShift route
+17. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
 
 ### Mandatory: Refresh MLflow tokens before testing
 
@@ -113,6 +115,28 @@ uv run --extra test --extra test-mlflow pytest agents/<framework>/<agent_name>/t
 All tests must pass.
 
 **Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-1` — consult eval-criteria.
+
+## Phase 1b: Run full behavioral test suite via run-btests-pytest.sh
+
+Run the deterministic test runner script that executes ALL agents' behavioral tests in parallel. This validates that the new agent integrates correctly into the multi-agent test pipeline and that the `AGENTS` array and `_AGENT_URL_MAP` are in sync.
+
+```bash
+cd tests/behavioral/deterministic
+./run-btests-pytest.sh <framework>/<agent_name>
+```
+
+To run only the agent under test, pass the agent path as an argument (e.g. `langgraph/human_in_the_loop`). To run all agents: `./run-btests-pytest.sh` with no arguments.
+
+The script:
+1. Pre-flight validates `oc` auth, `uv`, and that the AGENTS array is in sync with `conftest._AGENT_URL_MAP`
+2. Auto-discovers agent routes from OpenShift
+3. Detects MLflow config from existing deployments
+4. Runs each agent's `tests/behavioral/` in parallel with MLflow env vars
+5. Collects results and prints a summary table with detailed breakdown
+
+All agents must pass. If the agent under test fails, investigate before proceeding. If OTHER agents fail, determine whether the failure is pre-existing or related to changes made in this session.
+
+**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-1b` — consult eval-criteria.
 
 ## Phase 2: Verify tool_calls came from MLflow traces (GATE — blocks completion)
 
@@ -287,6 +311,7 @@ Fill in all summary sections (MLflow Trace Summary, EvalHub E2E Summary, Bugs Fi
 **MANDATORY — every item below is a hard acceptance requirement.** Do not mark the work complete until ALL items are verified. Do not defer, skip, or report any item as "ready to run later." Each item must be executed and pass during this session.
 
 - [ ]  Phase 1: all pytest behavioral tests pass
+- [ ]  Phase 1b: run-btests-pytest.sh passes for the agent under test
 - [ ]  Phase 2: tool_calls enrichment gate passed (or waived with bug ticket if tracing is missing)
 - [ ]  Phase 3: MLflow trace structure verified
 - [ ]  Phase 4: Agent pod logs clean

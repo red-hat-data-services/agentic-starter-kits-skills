@@ -396,6 +396,35 @@ Add marker under `[tool.pytest.ini_options]` markers list in the **repo-root** `
 "<agent_key>: <Agent Description> (<tool_a> + <tool_b>)",
 ```
 
+### Shared conftest `_AGENT_URL_MAP`
+
+Add the agent's marker-to-env-var mapping in `tests/behavioral/conftest.py`:
+
+```python
+_AGENT_URL_MAP = {
+    # ... existing entries ...
+    "<agent_key>": "<AGENT_ENV_VAR>",
+}
+```
+
+This map is used by `pytest_collection_modifyitems` to auto-set agent URLs and by the `run-btests-pytest.sh` script's preflight validation to verify sync.
+
+### Behavioral test runner script
+
+Add the agent to the `AGENTS` array in `tests/behavioral/deterministic/run-btests-pytest.sh`:
+
+```bash
+AGENTS=(
+  # ... existing entries ...
+  "<framework>/<agent_name>|<AGENT_ENV_VAR>|<deployment-name>"
+)
+```
+
+The format is `agent_path|url_env_var|deployment_name` where:
+- `agent_path` matches the directory under `agents/`
+- `url_env_var` matches the key in `_AGENT_URL_MAP` (e.g. `HITL_AGENT_URL`)
+- `deployment_name` is the Helm release name (e.g. `langgraph-hitl-agent`)
+
 ## Phase 6: EvalHub Fixture
 
 ### Stream configuration
@@ -545,6 +574,8 @@ instead.
 - [ ]  `evals/evalhub_adapter/Containerfile` updated with COPY line and RUN assertion
 - [ ]  `tests/behavioral/configs/thresholds.yaml` updated with agent section
 - [ ]  Repo-root `pyproject.toml` updated with pytest marker
+- [ ]  `tests/behavioral/conftest.py` updated with `_AGENT_URL_MAP` entry
+- [ ]  `tests/behavioral/deterministic/run-btests-pytest.sh` updated with AGENTS entry
 - [ ]  `evals/evalhub_adapter/tests/run-e2e.sh` updated with agent blocks
 - [ ]  All five documentation files updated (Phase 8 items 1-5)
 - [ ]  Any agent bugs found during the process are filed as Jira bugs under the parent epic
