@@ -10,6 +10,15 @@ Claude Code skills for [agentic-starter-kits](https://github.com/red-hat-data-se
 | add-behavioral-tests | Scaffold behavioral testing (pytest + EvalHub) for an agent | `/agentic-starter-kits-skills:add-behavioral-tests <agent_path> [JIRA-KEY]` |
 | run-behavioral-tests | Run and validate behavioral tests for an agent | `/agentic-starter-kits-skills:run-behavioral-tests <agent_path>` |
 | add-integration-tests | Add integration tests for agent deployment verification | `/agentic-starter-kits-skills:add-integration-tests <agent_path> [JIRA-KEY]` |
+| integrate-tracing | Orchestrate end-to-end MLflow tracing integration into an agent template | `/agentic-starter-kits-skills:integrate-tracing <framework> <agent_path>` |
+| check-autolog-support | Research and classify a framework's MLflow autolog support level (A, B, or C) | `/agentic-starter-kits-skills:check-autolog-support <framework>` |
+| create-tracing-module | Create the tracing.py module with enable_tracing() and framework-specific autolog | `/agentic-starter-kits-skills:create-tracing-module <agent_path> [framework]` |
+| wire-into-lifespan | Wire enable_tracing() into the FastAPI lifespan and add imports to main.py | `/agentic-starter-kits-skills:wire-into-lifespan <agent_path>` |
+| add-manual-tracing | Add manual MLflow trace wrapping for tool and agent spans (Level B/C agents) | `/agentic-starter-kits-skills:add-manual-tracing <agent_path>` |
+| verify-traces | Verify tracing works correctly via code review and live trace testing | `/agentic-starter-kits-skills:verify-traces <agent_path>` |
+| review-tracing-code | Review tracing integration code for correctness against repo patterns | `/agentic-starter-kits-skills:review-tracing-code <agent_path>` |
+| test-tracing | Test MLflow tracing end-to-end by starting servers, sending requests, and verifying spans | `/agentic-starter-kits-skills:test-tracing <agent_path>` |
+| kagenti-deploy | Deploy A2A-compliant agents to OpenShift/Kubernetes with kagenti integration | `/agentic-starter-kits-skills:kagenti-deploy` |
 
 ## Install
 
@@ -41,13 +50,25 @@ Run the eval-hook test suite:
 
 ## Migration from Local Skills
 
-If you previously used these skills from `~/.claude/skills/`, remove the old local directories after installing the plugin to prevent duplicate hook execution:
+If you previously used these skills from `.claude/skills/` in the agentic-starter-kits repo or from `~/.claude/skills/`, remove the old local directories after installing the plugin to prevent duplicates:
 
 ```bash
+# From agentic-starter-kits repo root (if skills were checked in)
+rm -rf .claude/skills/
+
+# From user-level skills (if any were installed locally)
 rm -rf ~/.claude/skills/deploy-agents
 rm -rf ~/.claude/skills/add-behavioral-tests
 rm -rf ~/.claude/skills/run-behavioral-tests
-# Only remove _shared if no other local skills depend on it
+rm -rf ~/.claude/skills/integrate-tracing
+rm -rf ~/.claude/skills/check-autolog-support
+rm -rf ~/.claude/skills/create-tracing-module
+rm -rf ~/.claude/skills/wire-into-lifespan
+rm -rf ~/.claude/skills/add-manual-tracing
+rm -rf ~/.claude/skills/verify-traces
+rm -rf ~/.claude/skills/review-tracing-code
+rm -rf ~/.claude/skills/test-tracing
+rm -rf ~/.claude/skills/kagenti-deploy
 ```
 
 ## License
