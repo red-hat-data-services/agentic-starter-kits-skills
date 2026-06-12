@@ -510,7 +510,7 @@
           }
         ],
         "verify_commands": [
-          "find agents/*/tests/behavioral -name conftest.py | sort",
+          "find agents/*/templates/*/tests/behavioral -name conftest.py | sort",
           "diff <(grep -A5 '_find_repo_root' agents/<EXISTING_AGENT>/tests/behavioral/conftest.py) <(grep -A5 '_find_repo_root' agents/${AGENT_PATH}/tests/behavioral/conftest.py)"
         ]
       }

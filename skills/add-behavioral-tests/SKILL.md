@@ -41,7 +41,7 @@ Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
 
-- **Agent path**: relative to `agents/` (e.g., `crewai/websearch_agent`)
+- **Agent path**: relative to `agents/` (e.g., `crewai/templates/websearch_agent`, `google/templates/adk`)
 - **Jira key**: optional ticket reference for branch naming and scope
 
 If no agent path is provided, ask the user which agent to add behavioral tests to.
@@ -282,7 +282,7 @@ agents/<framework>/<agent_name>/tests/behavioral/
 
 ### conftest.py
 
-Follow the standardized pattern used across all existing agents. Use any existing conftest (e.g. `agents/crewai/websearch_agent/tests/behavioral/conftest.py`) as a reference. The following patterns are mandatory — they must be consistent across ALL agents:
+Follow the standardized pattern used across all existing agents. Use any existing conftest (e.g. `agents/crewai/templates/websearch_agent/tests/behavioral/conftest.py`) as a reference. The following patterns are mandatory — they must be consistent across ALL agents:
 
 #### Standard patterns (must be consistent across agents)
 
@@ -471,7 +471,7 @@ Extend the `RUN` assertion to include the new path.
 
 ## Phase 7: Check Makefile MLflow Support
 
-Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/react_agent/Makefile` as the reference.
+Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/templates/react_agent/Makefile` as the reference.
 
 **If MLflow deploy support is missing**: do NOT modify the agent's Makefile. Log a Jira bug under the parent epic noting the missing MLflow Helm flags. The agent can still be deployed without MLflow — tracing just won't work on-cluster until the Makefile is updated by the agent owner.
 

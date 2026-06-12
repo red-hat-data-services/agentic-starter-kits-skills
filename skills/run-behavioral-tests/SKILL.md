@@ -41,7 +41,7 @@ Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
 
-- **Agent path**: relative to `agents/` (e.g., `crewai/websearch_agent`)
+- **Agent path**: relative to `agents/` (e.g., `crewai/templates/websearch_agent`, `google/templates/adk`)
 
 If no agent path is provided, ask the user which agent to run behavioral tests for.
 
@@ -70,7 +70,7 @@ Verify ALL of the following:
 13. **MLFLOW_EXPERIMENT_NAME**: Set to a meaningful experiment name
 14. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
 15. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
-16. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`) is set and points to the deployed OpenShift route
+16. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`, `GOOGLE_ADK_AGENT_URL`) is set and points to the deployed OpenShift route
 17. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
 
 ### Mandatory: Refresh MLflow tokens before testing
@@ -125,7 +125,7 @@ cd tests/behavioral/deterministic
 ./run-btests-pytest.sh <framework>/<agent_name>
 ```
 
-To run only the agent under test, pass the agent path as an argument (e.g. `langgraph/human_in_the_loop`). To run all agents: `./run-btests-pytest.sh` with no arguments.
+To run only the agent under test, pass the agent path as an argument (e.g. `langgraph/templates/human_in_the_loop`). To run all agents: `./run-btests-pytest.sh` with no arguments.
 
 The script:
 1. Pre-flight validates `oc` auth, `uv`, and that the AGENTS array is in sync with `conftest._AGENT_URL_MAP`
@@ -168,7 +168,7 @@ Confirm these span types appear in the output:
 
 - `[TOOL]` spans with names matching the agent's tool names
 - `[CHAT_MODEL]` spans with `tokenUsage` values
-- Framework spans: `[CHAIN]` for LangGraph/LangChain, `[AGENT]` for CrewAI, `[RETRIEVER]` for RAG agents
+- Framework spans: `[CHAIN]` for LangGraph/LangChain, `[AGENT]` for CrewAI/Google ADK, `[RETRIEVER]` for RAG agents
 - Parent/child relationships — not all spans at `parent=ROOT`
 
 If tool spans are missing, check whether tracing is actually enabled in the agent (Phase 2a indicators). If tracing is integrated but tool spans are absent, the tracing wiring may be incomplete — log a bug under the parent epic.
@@ -265,7 +265,7 @@ Verify the adapter container is correctly configured for the new agent:
 
 ## Phase 10: Cross-agent Implementation Consistency Check
 
-Read the full behavioral test implementation of ALL existing agents (`agents/*/tests/behavioral/`) and verify the new agent is consistent across every layer. If ANY existing agent deviates, fix it in this PR.
+Read the full behavioral test implementation of ALL existing agents (`agents/*/templates/*/tests/behavioral/`) and verify the new agent is consistent across every layer. If ANY existing agent deviates, fix it in this PR.
 
 **conftest.py:**
 
