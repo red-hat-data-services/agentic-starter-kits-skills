@@ -54,7 +54,15 @@ If you previously used these skills from `.claude/skills/` in the agentic-starte
 
 ```bash
 # From agentic-starter-kits repo root (if skills were checked in)
-rm -rf .claude/skills/
+rm -rf .claude/skills/integrate-tracing
+rm -rf .claude/skills/check-autolog-support
+rm -rf .claude/skills/create-tracing-module
+rm -rf .claude/skills/wire-into-lifespan
+rm -rf .claude/skills/add-manual-tracing
+rm -rf .claude/skills/verify-traces
+rm -rf .claude/skills/review-tracing-code
+rm -rf .claude/skills/test-tracing
+rm -rf .claude/skills/kagenti-deploy
 
 # From user-level skills (if any were installed locally)
 rm -rf ~/.claude/skills/deploy-agents

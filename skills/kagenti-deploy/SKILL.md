@@ -625,8 +625,7 @@ EOF
 
 # 13. Run verification script
 # This checks all components and reports status
-# Download and run the verification script from the skills plugin repo
-curl -sL https://raw.githubusercontent.com/red-hat-data-services/agentic-starter-kits-skills/main/skills/kagenti-deploy/scripts/verify-kagenti.sh | bash -s -- $NAMESPACE
+./scripts/verify-kagenti.sh $NAMESPACE
 
 # 14. Access kagenti UI
 KAGENTI_UI=$(oc get route kagenti-ui -n kagenti-system -o jsonpath='{.spec.host}')
