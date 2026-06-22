@@ -41,7 +41,7 @@ Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
 
-- **Agent path**: relative to `agents/` (e.g., `crewai/websearch_agent`)
+- **Agent path**: relative to `agents/` (e.g., `crewai/templates/websearch_agent`, `google/templates/adk`)
 - **Jira key**: optional ticket reference for branch naming and scope
 
 If no agent path is provided, ask the user which agent to add behavioral tests to.
@@ -282,7 +282,7 @@ agents/<framework>/<agent_name>/tests/behavioral/
 
 ### conftest.py
 
-Follow the standardized pattern used across all existing agents. Use any existing conftest (e.g. `agents/crewai/websearch_agent/tests/behavioral/conftest.py`) as a reference. The following patterns are mandatory — they must be consistent across ALL agents:
+Follow the standardized pattern used across all existing agents. Use any existing conftest (e.g. `agents/crewai/templates/websearch_agent/tests/behavioral/conftest.py`) as a reference. The following patterns are mandatory — they must be consistent across ALL agents:
 
 #### Standard patterns (must be consistent across agents)
 
@@ -371,7 +371,7 @@ All use `pytestmark = pytest.mark.<agent_marker>`. Follow the vanilla_python or 
 - **test_response_quality.py**: plan coherence, multi-tool synthesis, completeness (parametrized)
 - **test_cost_latency.py**: single/multi tool latency against thresholds
 - **test_reliability.py** (`pytest.mark.slow`): pass@k for tool selection, multi-tool, response quality
-- **test_streaming_parity.py** (only if agent is "Standard streaming" from Phase 1 step 5): sends the same query with `stream=false` and `stream=true`, asserts both produce non-empty content and (when tool_calls are available) the same set of tool names. Uses `run_task` directly with explicit `stream=` in `TaskConfig` — does NOT use the `run_eval` fixture since it hardcodes `STREAM`. See `agents/llamaindex/websearch_agent/tests/behavioral/test_streaming_parity.py` as the reference. Skip this file entirely for agents that use custom SSE events or don't support streaming.
+- **test_streaming_parity.py** (only if agent is "Standard streaming" from Phase 1 step 5): sends the same query with `stream=false` and `stream=true`, asserts both produce non-empty content and (when tool_calls are available) the same set of tool names. Uses `run_task` directly with explicit `stream=` in `TaskConfig` — does NOT use the `run_eval` fixture since it hardcodes `STREAM`. See `agents/llamaindex/templates/websearch_agent/tests/behavioral/test_streaming_parity.py` as the reference. Skip this file entirely for agents that use custom SSE events or don't support streaming.
 
 ## Phase 5: Config Updates
 
@@ -471,7 +471,7 @@ Extend the `RUN` assertion to include the new path.
 
 ## Phase 7: Check Makefile MLflow Support
 
-Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/react_agent/Makefile` as the reference.
+Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/templates/react_agent/Makefile` as the reference.
 
 **If MLflow deploy support is missing**: do NOT modify the agent's Makefile. Log a Jira bug under the parent epic noting the missing MLflow Helm flags. The agent can still be deployed without MLflow — tracing just won't work on-cluster until the Makefile is updated by the agent owner.
 
