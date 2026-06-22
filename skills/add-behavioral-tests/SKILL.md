@@ -371,7 +371,7 @@ All use `pytestmark = pytest.mark.<agent_marker>`. Follow the vanilla_python or 
 - **test_response_quality.py**: plan coherence, multi-tool synthesis, completeness (parametrized)
 - **test_cost_latency.py**: single/multi tool latency against thresholds
 - **test_reliability.py** (`pytest.mark.slow`): pass@k for tool selection, multi-tool, response quality
-- **test_streaming_parity.py** (only if agent is "Standard streaming" from Phase 1 step 5): sends the same query with `stream=false` and `stream=true`, asserts both produce non-empty content and (when tool_calls are available) the same set of tool names. Uses `run_task` directly with explicit `stream=` in `TaskConfig` — does NOT use the `run_eval` fixture since it hardcodes `STREAM`. See `agents/llamaindex/websearch_agent/tests/behavioral/test_streaming_parity.py` as the reference. Skip this file entirely for agents that use custom SSE events or don't support streaming.
+- **test_streaming_parity.py** (only if agent is "Standard streaming" from Phase 1 step 5): sends the same query with `stream=false` and `stream=true`, asserts both produce non-empty content and (when tool_calls are available) the same set of tool names. Uses `run_task` directly with explicit `stream=` in `TaskConfig` — does NOT use the `run_eval` fixture since it hardcodes `STREAM`. See `agents/llamaindex/templates/websearch_agent/tests/behavioral/test_streaming_parity.py` as the reference. Skip this file entirely for agents that use custom SSE events or don't support streaming.
 
 ## Phase 5: Config Updates
 

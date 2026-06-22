@@ -60,8 +60,8 @@ Gather these facts:
 3. **Existing integration tests**: Check if `tests/integration/test_deployment.py` already exists. If yes, stop and inform the user — no work needed
 4. **Makefile targets**: Check if `test-integration`, `build-openshift`, `deploy`, `undeploy` targets exist. If `build-openshift` is missing, stop — the agent cannot be built on-cluster
 5. **Reference template**: Read an existing agent's integration test for reference:
-   - Simple agents: read `agents/langgraph/react_agent/tests/integration/test_deployment.py`
-   - Complex agents: also read `agents/langgraph/agentic_rag/tests/integration/conftest.py` (for the `_write_env_file` pattern with extra env vars)
+   - Simple agents: read `agents/langgraph/templates/react_agent/tests/integration/test_deployment.py`
+   - Complex agents: also read `agents/langgraph/templates/agentic_rag/tests/integration/conftest.py` (for the `_write_env_file` pattern with extra env vars)
 
 ## Phase 2: Create Test Files
 
