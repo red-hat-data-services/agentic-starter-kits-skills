@@ -92,9 +92,9 @@
           {
             "id": "conftest-imports-shared",
             "type": "exec",
-            "command": "grep -q 'integration.conftest' agents/${AGENT_PATH}/tests/integration/conftest.py",
+            "command": "grep -q 'from integration.conftest import' agents/${AGENT_PATH}/tests/integration/conftest.py",
             "on_fail": "block",
-            "description": "conftest.py imports shared fixtures from integration.conftest (either 'from integration.conftest import ...' or 'import integration.conftest')"
+            "description": "conftest.py re-exports shared fixtures via 'from integration.conftest import cluster_auth, repo_root'"
           },
           {
             "id": "test-has-marker",
@@ -203,7 +203,7 @@
             "id": "conftest-matches-pattern",
             "type": "eval",
             "description": "conftest.py follows the correct pattern for the agent's discovered capabilities",
-            "pass_if": "If agent has no extra env vars: conftest.py is a 2-line re-export of cluster_auth and repo_root from integration.conftest. If agent has extra env vars: conftest.py is a full file containing INTERNAL_REGISTRY, _REQUIRED_ENV tuple, agent_dir/agent_name fixtures, _write_env_file function, and deployed_agent fixture (matching the agentic_rag pattern)."
+            "pass_if": "If agent has no extra env vars: conftest.py is a 2-line re-export using 'from integration.conftest import cluster_auth, repo_root'. If agent has extra env vars: conftest.py is a full file that also uses 'from integration.conftest import cluster_auth, repo_root' and additionally contains INTERNAL_REGISTRY, _REQUIRED_ENV tuple, agent_dir/agent_name fixtures, _write_env_file function, and deployed_agent fixture."
           },
           {
             "id": "test-structure-matches",
