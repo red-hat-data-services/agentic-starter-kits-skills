@@ -31,7 +31,7 @@ Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
 
-- **Agent path**: relative to `agents/` (e.g., `google/adk`, `llamaindex/websearch_agent`)
+- **Agent path**: relative to `agents/` (e.g., `langgraph/templates/react_agent`, `crewai/templates/websearch_agent`)
 - **Jira key**: optional ticket reference for context
 
 If no agent path is provided, ask the user which agent to add integration tests to.
@@ -51,24 +51,38 @@ Validate prerequisites:
 
 ## Phase 1: Investigate the Agent
 
-Gather these facts:
+Gather these facts — the discovered capabilities drive all subsequent phases:
 
 1. **Agent name**: Read `agent.yaml` — extract the `name` field
-2. **Required env vars**: Read `agent.yaml` `env.required` section AND `.env.example`. Classify as:
-   - **Simple**: only requires `BASE_URL`, `MODEL_ID` (and `API_KEY` which is always optional). This is the majority pattern (react_agent, crewai/websearch_agent, human_in_the_loop)
-   - **Complex**: requires additional vars (e.g., `EMBEDDING_MODEL`, `VECTOR_STORE_ID` for RAG agents). Follow the agentic_rag pattern with extended `_write_env_file()`
-3. **Existing integration tests**: Check if `tests/integration/test_deployment.py` already exists. If yes, stop and inform the user — no work needed
-4. **Makefile targets**: Check if `test-integration`, `build-openshift`, `deploy`, `undeploy` targets exist. If `build-openshift` is missing, stop — the agent cannot be built on-cluster
-5. **Reference template**: Read an existing agent's integration test for reference:
-   - Simple agents: read `agents/langgraph/templates/react_agent/tests/integration/test_deployment.py`
-   - Complex agents: also read `agents/langgraph/templates/agentic_rag/tests/integration/conftest.py` (for the `_write_env_file` pattern with extra env vars)
+2. **Existing integration tests**: Check if `tests/integration/test_deployment.py` already exists. If yes, stop and inform the user — no work needed
+3. **Makefile targets**: Check if `test-integration`, `build-openshift`, `deploy`, `undeploy` targets exist. If `build-openshift` is missing, stop — the agent cannot be built on-cluster
+
+### Capability discovery
+
+4. **Required env vars**: Read `agent.yaml` `env.required` section AND `.env.example`. Identify every env var the agent needs. Then determine:
+
+   - **`has_extra_env_vars`**: Does the agent require vars beyond `BASE_URL`, `MODEL_ID` (and `API_KEY` which is always optional)? If yes, record the list of extra var names.
+   - **`has_infrastructure_deps`**: Do the extra vars indicate pre-provisioned services — databases (`POSTGRES_*`), vector stores (`VECTOR_STORE_*`, `MILVUS_*`), message queues, etc.? If yes, record what kind of infrastructure. This drives the `<AGENT_DESCRIPTION>` in `_write_env_file` error messages (Phase 2) — e.g., "database-backed agent", "RAG agent with vector store".
+
+   Examples of what you might discover:
+   - No extra vars → majority pattern (react_agent, crewai/websearch_agent, human_in_the_loop)
+   - RAG vars (`EMBEDDING_MODEL`, `VECTOR_STORE_ID`) → extra env vars, infrastructure dep (vector store)
+   - DB vars (`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`) → extra env vars, infrastructure dep (database)
+
+5. **Reference template**: Read an existing agent's integration test to ground the patterns:
+   - Always read: `agents/langgraph/templates/react_agent/tests/integration/test_deployment.py`
+   - If `has_extra_env_vars`: also read `agents/langgraph/templates/agentic_rag/tests/integration/conftest.py` and `agents/langgraph/templates/agentic_rag/tests/integration/test_deployment.py`
+
+   **Note**: When the reference code differs from the templates in Phase 2, the Phase 2 templates take precedence. The reference files are for understanding the overall structure, not for copying import styles or minor details verbatim. In particular, always use `from integration.conftest import cluster_auth, repo_root` (not `import integration.conftest`) — the explicit form is required for pytest fixture discovery and is enforced by the eval criteria.
+
+Record all discovered capabilities — they determine the file structure (Phase 2), CI config (Phase 4), and consistency checks (Phase 5c).
 
 ## Phase 2: Create Test Files
 
 ### Directory structure
 
 ```
-agents/<framework>/<agent_name>/tests/integration/
+agents/<framework>/templates/<agent_name>/tests/integration/
   __init__.py
   conftest.py
   test_deployment.py
@@ -80,32 +94,32 @@ agents/<framework>/<agent_name>/tests/integration/
 
 Empty file.
 
-### conftest.py
+### File structure — driven by discovered capabilities
 
-Two-line shared fixture re-export (majority pattern from 3 of 4 existing agents):
+The file structure depends on whether the agent has extra env vars (discovered in Phase 1). Both patterns produce the same three files, but the distribution of logic differs.
+
+---
+
+### If `has_extra_env_vars` is false (no extra env vars)
+
+**conftest.py** — Two-line shared fixture re-export:
 
 ```python
 # Re-export shared integration fixtures so pytest discovers them.
 from integration.conftest import cluster_auth, repo_root  # noqa: F401
 ```
 
-### test_deployment.py
+**test_deployment.py** — Contains all per-agent logic (fixtures, env file writer, deployment lifecycle, and the test):
 
-Follow the canonical pattern from existing agents. The file contains all per-agent logic:
-
-#### Standard patterns (must be consistent across agents)
-
-1. **Imports**: `from __future__ import annotations`, stdlib (`logging`, `os`), `pytest`, then `integration.utils` imports (`MakeTargetError`, `RouteNotFoundError`, `get_route`, `health_check`, `load_agent_name`, `run_make`)
+1. **Imports**: `from __future__ import annotations`, stdlib (`logging`, `os`), `pytest`, then `integration.utils` imports (`MakeTargetError`, `RouteNotFoundError`, `get_route`, `health_check`, `load_agent_name`, `resolve_agent_dir`, `run_make`)
 2. **`INTERNAL_REGISTRY`** constant: `"image-registry.openshift-image-registry.svc:5000"`
-3. **`agent_dir` fixture** (module scope): returns `repo_root / "agents" / "<framework>" / "<agent_name>"`
+3. **`agent_dir` fixture** (module scope): returns `resolve_agent_dir(__file__)`
 4. **`agent_name` fixture** (module scope): returns `load_agent_name(agent_dir)`
-5. **`_write_env_file()` function**: validates required env vars, writes `.env` file. For simple agents, check `("BASE_URL", "MODEL_ID")`. For complex agents, add agent-specific required vars
-6. **`deployed_agent` fixture** (module scope): orchestrates build-openshift (600s timeout) → deploy (300s timeout) → get route → yield URL → undeploy (120s timeout) → cleanup `.env`
+5. **`_write_env_file()` function**: validates `("BASE_URL", "MODEL_ID")`, writes `.env` file, preserves any pre-existing `.env` for restore on teardown
+6. **`deployed_agent` fixture** (module scope): orchestrates build-openshift (600s timeout) → deploy (300s timeout) → get route → yield URL → undeploy (120s timeout) → restore/cleanup `.env`
 7. **`test_health_endpoint`**: marked `@pytest.mark.integration`, calls `health_check(f"{deployed_agent}/health", retries=12, backoff=5.0)`, asserts `status == "healthy"` and `agent_initialized is True`
 
-#### Variation: Simple vs Complex agents
-
-**Simple agent `_write_env_file`** (react_agent, crewai, hitl pattern):
+Template — `_write_env_file`:
 
 ```python
 def _write_env_file(agent_dir, container_image):
@@ -116,25 +130,111 @@ def _write_env_file(agent_dir, container_image):
             "Set them in the CI workflow or export locally."
         )
     env_path = agent_dir / ".env"
+    orig_env = None
+    if env_path.exists():
+        orig_env = env_path.read_text(encoding="utf-8")
     env_path.write_text(
         f"API_KEY={os.environ.get('API_KEY', 'not-needed')}\n"
         f"BASE_URL={os.environ['BASE_URL']}\n"
         f"MODEL_ID={os.environ['MODEL_ID']}\n"
-        f"CONTAINER_IMAGE={container_image}\n"
+        f"CONTAINER_IMAGE={container_image}\n",
+        encoding="utf-8",
     )
-    return env_path
+    return env_path, orig_env
 ```
 
-**Complex agent `_write_env_file`** (agentic_rag pattern — adapt per agent's env vars):
+Template — `deployed_agent` fixture (single `except` block, `.env` restore):
 
 ```python
-_REQUIRED_ENV = ("BASE_URL", "MODEL_ID", "<AGENT_SPECIFIC_VAR_1>", "<AGENT_SPECIFIC_VAR_2>")
+@pytest.fixture(scope="module")
+def deployed_agent(cluster_auth, agent_dir, agent_name):
+    namespace = cluster_auth["namespace"]
+    container_image = f"{INTERNAL_REGISTRY}/{namespace}/{agent_name}:latest"
+    env_path, orig_env = _write_env_file(agent_dir, container_image)
+
+    deployed = False
+    try:
+        logger.info("Building image on cluster via build-openshift...")
+        run_make("build-openshift", cwd=agent_dir, timeout=600)
+
+        logger.info("Deploying to cluster...")
+        run_make("deploy", cwd=agent_dir, timeout=300)
+        deployed = True
+
+        route_url = get_route(agent_name, namespace=namespace)
+        logger.info("Agent deployed at %s", route_url)
+
+        yield route_url
+
+    except (MakeTargetError, RouteNotFoundError) as exc:
+        pytest.fail(f"Deployment failed: {exc}")
+
+    finally:
+        if deployed:
+            logger.info("Tearing down deployment...")
+            try:
+                run_make("undeploy", cwd=agent_dir, timeout=120)
+            except MakeTargetError:
+                logger.warning(
+                    "Cleanup failed — manual undeploy may be needed", exc_info=True
+                )
+        if orig_env is not None:
+            try:
+                env_path.write_text(orig_env, encoding="utf-8")
+            except Exception:
+                logger.exception("Failed to restore pre-existing .env at %s", env_path)
+        else:
+            env_path.unlink(missing_ok=True)
+```
+
+---
+
+### If `has_extra_env_vars` is true (agent needs additional env vars)
+
+When the agent has extra env vars (especially for infrastructure dependencies like databases or vector stores), the fixture logic moves to `conftest.py` and `test_deployment.py` becomes minimal. This separation keeps the deployment orchestration (which is more complex for these agents) cleanly isolated.
+
+**conftest.py** — Full file with all fixtures and deployment logic:
+
+```python
+from __future__ import annotations
+
+import logging
+import os
+
+import pytest
+from integration.conftest import cluster_auth, repo_root  # noqa: F401
+from integration.utils import (
+    MakeTargetError,
+    RouteNotFoundError,
+    get_route,
+    load_agent_name,
+    resolve_agent_dir,
+    run_make,
+)
+
+logger = logging.getLogger(__name__)
+
+INTERNAL_REGISTRY = "image-registry.openshift-image-registry.svc:5000"
+
+_REQUIRED_ENV = ("BASE_URL", "MODEL_ID", "<EXTRA_VAR_1>", "<EXTRA_VAR_2>")
+
+
+@pytest.fixture(scope="module")
+def agent_dir():
+    return resolve_agent_dir(__file__)
+
+
+@pytest.fixture(scope="module")
+def agent_name(agent_dir):
+    return load_agent_name(agent_dir)
+
 
 def _write_env_file(agent_dir, container_image):
+    """Write a .env file with base and agent-specific env vars."""
     missing = [v for v in _REQUIRED_ENV if v not in os.environ]
     if missing:
         pytest.fail(
-            f"Missing required env vars: {', '.join(missing)}. "
+            f"Missing required env vars for <AGENT_DESCRIPTION>: {', '.join(missing)}. "
             "Set them in the CI workflow or export locally."
         )
     env_path = agent_dir / ".env"
@@ -143,17 +243,78 @@ def _write_env_file(agent_dir, container_image):
         f"BASE_URL={os.environ['BASE_URL']}\n"
         f"MODEL_ID={os.environ['MODEL_ID']}\n"
         f"CONTAINER_IMAGE={container_image}\n"
-        f"<AGENT_SPECIFIC_VAR_1>={os.environ['<AGENT_SPECIFIC_VAR_1>']}\n"
-        # ... additional vars as needed
+        f"<EXTRA_VAR_1>={os.environ['<EXTRA_VAR_1>']}\n"
+        f"<EXTRA_VAR_2>={os.environ['<EXTRA_VAR_2>']}\n"
+        # ... include ALL extra vars discovered in Phase 1
+        # For vars with sensible defaults, use os.environ.get('<VAR>', '<default>')
     )
     return env_path
+
+
+@pytest.fixture(scope="module")
+def deployed_agent(cluster_auth, agent_dir, agent_name):
+    namespace = cluster_auth["namespace"]
+    container_image = f"{INTERNAL_REGISTRY}/{namespace}/{agent_name}:latest"
+    env_path = _write_env_file(agent_dir, container_image)
+
+    deployed = False
+    try:
+        try:
+            logger.info("Building image on cluster via build-openshift...")
+            run_make("build-openshift", cwd=agent_dir, timeout=600)
+
+            logger.info("Deploying to cluster...")
+            run_make("deploy", cwd=agent_dir, timeout=300)
+            deployed = True
+
+            route_url = get_route(agent_name, namespace=namespace)
+            logger.info("Agent deployed at %s", route_url)
+        except (MakeTargetError, RouteNotFoundError) as exc:
+            pytest.fail(f"Deployment failed: {exc}")
+        except Exception as exc:
+            pytest.fail(f"Unexpected error during deployment setup: {exc}")
+
+        yield route_url
+
+    finally:
+        if deployed:
+            logger.info("Tearing down deployment...")
+            try:
+                run_make("undeploy", cwd=agent_dir, timeout=120)
+            except MakeTargetError:
+                logger.warning(
+                    "Cleanup failed — manual undeploy may be needed", exc_info=True
+                )
+        env_path.unlink(missing_ok=True)
 ```
 
-#### Variation: deployed_agent fixture error handling
+Key differences from the no-extra-env-vars pattern:
+- `_REQUIRED_ENV` tuple at module level lists all required vars (including extra ones)
+- Error message in `_write_env_file` describes the agent type (e.g., "database-backed agent", "RAG agent")
+- `deployed_agent` uses nested `try/except` with an additional `except Exception` catch — infrastructure dependencies (DB connections, vector store init) can fail in unexpected ways
+- `_write_env_file` returns just `env_path` (no `.env` restore — these agents typically don't have a pre-existing `.env` on CI)
 
-**Simple agents** (react_agent, crewai, hitl): single `except (MakeTargetError, RouteNotFoundError)` block.
+**test_deployment.py** — Minimal, contains only the test function:
 
-**Complex agents** (agentic_rag): nested `try/except` with additional `except Exception` catch for unexpected errors. Use this when the agent has extra deployment complexity.
+```python
+from __future__ import annotations
+
+import pytest
+from integration.utils import health_check
+
+
+@pytest.mark.integration
+def test_health_endpoint(deployed_agent):
+    route_url = deployed_agent
+    result = health_check(f"{route_url}/health", retries=12, backoff=5.0)
+
+    assert result["status"] == "healthy"
+    assert result["agent_initialized"] is True
+```
+
+Adapt the templates above:
+- Replace `<EXTRA_VAR_*>` with the actual extra var names discovered in Phase 1
+- Replace `<AGENT_DESCRIPTION>` with a short label derived from `has_infrastructure_deps` — e.g., "database-backed agent" (PostgreSQL), "RAG agent" (vector store), or "agent with <service> dependency"
 
 ## Phase 3: Add Makefile Target
 
@@ -182,14 +343,43 @@ If the `test` target does not already have `--ignore=tests/integration`, add it.
 Add a matrix entry to `.github/workflows/agent-deployment-test.yaml` under `strategy.matrix.agent`:
 
 ```yaml
-- { name: <framework>-<agent-slug>, dir: agents/<framework>/<agent_name> }
+- { name: <framework>-<agent-slug>, dir: agents/<framework>/templates/<agent_name> }
 ```
 
-Where `<agent-slug>` is a kebab-case name derived from the agent name (e.g., `websearch-agent`, `adk-agent`).
+Where `<agent-slug>` is a kebab-case name derived from the agent name (e.g., `websearch-agent`, `adk-agent`, `db-memory-agent`).
 
-**If the agent needs extra env vars** beyond `API_KEY`, `BASE_URL`, `MODEL_ID`:
-- Add agent-specific vars to the `env:` block, sourced from `${{ vars.VAR_NAME }}` or `${{ secrets.VAR_NAME }}` as appropriate
-- Or add an `include:` entry in the matrix for agent-specific env vars
+### If `has_extra_env_vars` is false
+
+No further CI changes needed — the job-level `env:` block already provides `API_KEY`, `BASE_URL`, and `MODEL_ID`.
+
+### If `has_extra_env_vars` is true
+
+Add agent-specific env vars scoped to the agent via `matrix.include`. Do NOT add the vars to the top-level `env:` block (they would be set for all agents unnecessarily). Use the `include:` mechanism to inject them as job-level env vars — this avoids echoing secrets to `$GITHUB_ENV` via shell:
+
+```yaml
+strategy:
+  matrix:
+    agent:
+      # ... existing entries ...
+      - { name: <framework>-<agent-slug>, dir: agents/<framework>/templates/<agent_name> }
+    include:
+      - agent: { name: <framework>-<agent-slug>, dir: agents/<framework>/templates/<agent_name> }
+        EXTRA_VAR_1: ${{ vars.EXTRA_VAR_1 }}
+        EXTRA_VAR_2: ${{ secrets.EXTRA_VAR_2 }}
+```
+
+Then reference the matrix values in the job's `env:` block or step-level `env:`:
+
+```yaml
+- name: Run integration test
+  working-directory: ${{ matrix.agent.dir }}
+  env:
+    EXTRA_VAR_1: ${{ matrix.EXTRA_VAR_1 }}
+    EXTRA_VAR_2: ${{ matrix.EXTRA_VAR_2 }}
+  run: make test-integration
+```
+
+Use `vars.*` for non-sensitive values (model names, hostnames, ports) and `secrets.*` for credentials (passwords, tokens). Check `.env.example` and `agent.yaml` to determine which is which.
 
 ## Phase 5: Validate
 
@@ -224,12 +414,25 @@ This builds the agent image on-cluster, deploys via Helm, health-checks, and tea
 
 ### 5c: Cross-agent consistency check
 
-Verify the new test files match the established pattern:
+Verify the new test files match the established pattern for the agent's discovered capabilities.
 
-1. `conftest.py` re-exports `cluster_auth` and `repo_root` from `integration.conftest`
-2. `test_deployment.py` has the same structure as existing agents: `INTERNAL_REGISTRY`, `agent_dir`, `agent_name`, `_write_env_file`, `deployed_agent`, `test_health_endpoint`
-3. `_write_env_file` validates the correct required env vars for this agent
-4. `deployed_agent` fixture follows the standard build → deploy → yield → undeploy → cleanup flow
+**Common to all agents:**
+
+1. `conftest.py` re-exports shared fixtures via `from integration.conftest import cluster_auth, repo_root`
+2. `_write_env_file` validates the correct required env vars for this agent (matching what was discovered in Phase 1)
+3. `deployed_agent` fixture follows the standard build → deploy → yield → undeploy → cleanup flow
+4. `test_deployment.py` has `@pytest.mark.integration` on `test_health_endpoint` with `health_check()` call asserting `status == "healthy"` and `agent_initialized is True`
+
+**If `has_extra_env_vars` is false:**
+
+5. `conftest.py` is the 2-line re-export pattern (matching react_agent, crewai/websearch_agent, human_in_the_loop)
+6. `test_deployment.py` contains `INTERNAL_REGISTRY`, `agent_dir`, `agent_name`, `_write_env_file`, `deployed_agent`, and `test_health_endpoint`
+
+**If `has_extra_env_vars` is true:**
+
+5. `conftest.py` contains `INTERNAL_REGISTRY`, `_REQUIRED_ENV`, `agent_dir`, `agent_name`, `_write_env_file`, and `deployed_agent` (matching the agentic_rag pattern)
+6. `test_deployment.py` is minimal — only imports and `test_health_endpoint`
+7. `_REQUIRED_ENV` tuple includes all extra vars discovered in Phase 1
 
 ### 5d: Verify CI workflow YAML
 
@@ -238,7 +441,7 @@ Confirm the workflow file has valid YAML syntax after editing. The matrix entry 
 ## Definition of Done
 
 - [ ] `tests/integration/__init__.py` created
-- [ ] `tests/integration/conftest.py` created with shared fixture re-exports
+- [ ] `tests/integration/conftest.py` created (re-export pattern or full fixtures, per discovered capabilities)
 - [ ] `tests/integration/test_deployment.py` created with health check test
 - [ ] `test-integration` Makefile target present
 - [ ] `test` Makefile target ignores `tests/integration/`
