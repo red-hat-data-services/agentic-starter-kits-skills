@@ -31,7 +31,7 @@ Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
 
-- **Agent path**: relative to `agents/` (e.g., `google/adk`, `llamaindex/websearch_agent`)
+- **Agent path**: relative to `agents/` (e.g., `langgraph/templates/react_agent`, `crewai/templates/websearch_agent`)
 - **Jira key**: optional ticket reference for context
 
 If no agent path is provided, ask the user which agent to add integration tests to.
@@ -72,6 +72,8 @@ Gather these facts — the discovered capabilities drive all subsequent phases:
 5. **Reference template**: Read an existing agent's integration test to ground the patterns:
    - Always read: `agents/langgraph/templates/react_agent/tests/integration/test_deployment.py`
    - If `has_extra_env_vars`: also read `agents/langgraph/templates/agentic_rag/tests/integration/conftest.py` and `agents/langgraph/templates/agentic_rag/tests/integration/test_deployment.py`
+
+   **Note**: When the reference code differs from the templates in Phase 2, the Phase 2 templates take precedence. The reference files are for understanding the overall structure, not for copying import styles or minor details verbatim. In particular, always use `from integration.conftest import cluster_auth, repo_root` (not `import integration.conftest`) — the explicit form is required for pytest fixture discovery and is enforced by the eval criteria.
 
 Record all discovered capabilities — they determine the file structure (Phase 2), CI config (Phase 4), and consistency checks (Phase 5c).
 
