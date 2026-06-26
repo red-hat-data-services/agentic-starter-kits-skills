@@ -39,6 +39,13 @@
           "description": "Container CLI available (podman or docker) -- required unless --token-only"
         },
         {
+          "id": "container-cli-connected",
+          "type": "exec",
+          "command": "podman info >/dev/null 2>&1 || docker info >/dev/null 2>&1",
+          "on_fail": "warn",
+          "description": "Container CLI is connected and ready (podman machine running or docker daemon up) -- required unless --token-only"
+        },
+        {
           "id": "args-provided",
           "type": "eval",
           "description": "Skill arguments specify target agents or a mode flag",
@@ -53,6 +60,35 @@
       ]
     },
     "gates": {
+      "step-0a-mlflow-infra": {
+        "description": "Step 0a: MLflow infrastructure verified (RHOAI 3.5+ only)",
+        "assertions": [
+          {
+            "id": "rhoai-version-detected",
+            "type": "eval",
+            "description": "RHOAI version was detected via CRD presence check",
+            "pass_if": "The skill checked for the mlflowoperators CRD to determine if this is RHOAI 3.5+ or an older version. If the CRD does not exist, remaining assertions in this gate are N/A (auto-pass)."
+          },
+          {
+            "id": "mlflow-operator-managed",
+            "type": "eval",
+            "description": "MLflow operator is Managed in DataScienceCluster (RHOAI 3.5+ only)",
+            "pass_if": "mlflowoperator.managementState is 'Managed' in the DSC spec. If it is 'Removed', the user was warned that MLflow must be enabled before tracing can work. If RHOAI < 3.5, this is N/A (auto-pass)."
+          },
+          {
+            "id": "mlflow-pod-running",
+            "type": "eval",
+            "description": "MLflow pod is running in redhat-ods-applications (RHOAI 3.5+ only)",
+            "pass_if": "At least one MLflow pod is Running in redhat-ods-applications namespace. If RHOAI < 3.5, this is N/A (auto-pass)."
+          },
+          {
+            "id": "namespace-mlflow-label",
+            "type": "eval",
+            "description": "Namespace has mlflow-tracking=enabled label (RHOAI 3.5+ only)",
+            "pass_if": "The target namespace has the label mlflow-tracking=enabled. If it was missing, it was applied via oc label. If RHOAI < 3.5, this is N/A (auto-pass)."
+          }
+        ]
+      },
       "step-1-resolve": {
         "description": "Step 1: Target agents resolved and validated",
         "assertions": [
@@ -220,8 +256,8 @@
           {
             "id": "secrets-patched",
             "type": "eval",
-            "description": "Each secret was patched with the fresh token",
-            "pass_if": "oc patch secret was executed for every discovered MLflow token secret with the base64-encoded fresh token"
+            "description": "Each secret was patched with the fresh token using Helm-compatible method",
+            "pass_if": "Each MLflow token secret was updated with the fresh base64-encoded token using 'oc apply --server-side --force-conflicts --field-manager=helm' (NOT 'oc patch secret', which breaks Helm field ownership). Alternatively, if a conflict already existed, the secret was deleted and the release reinstalled via helm uninstall + make deploy."
           },
           {
             "id": "rollouts-restarted",
@@ -274,6 +310,18 @@
             "type": "eval",
             "description": "No JSONDecodeError in agent startup logs (expired token symptom)",
             "pass_if": "Agent logs do NOT contain 'Expecting value: line 1 column 1 (char 0)' which indicates the MLflow API returned a 302 OAuth redirect instead of JSON"
+          },
+          {
+            "id": "no-workspace-not-found",
+            "type": "eval",
+            "description": "No workspace-not-found error in agent logs (RHOAI 3.5+ missing label)",
+            "pass_if": "Agent logs do NOT contain 'RESOURCE_DOES_NOT_EXIST: Workspace' which indicates the namespace is missing the mlflow-tracking=enabled label (RHOAI 3.5+). If this error appears, see Step 0a."
+          },
+          {
+            "id": "no-unauthenticated-error",
+            "type": "eval",
+            "description": "No UNAUTHENTICATED error in agent logs (RHOAI 3.5+ MLflow not deployed)",
+            "pass_if": "Agent logs do NOT contain 'UNAUTHENTICATED' with a message about 'MLFLOW_TRACKING_AUTH=kubernetes-namespaced', which indicates the MLflow operator is not running (RHOAI 3.5+). If this error appears, see Step 0a."
           },
           {
             "id": "health-after-restart",
