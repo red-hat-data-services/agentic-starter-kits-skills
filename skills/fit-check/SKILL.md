@@ -41,8 +41,8 @@ This phase populates 6 dimensions. The method depends on the mode but the output
 Ask the contributor these questions **one at a time** (each answer may inform the next question):
 
 1. **Framework/platform**: "Which agent framework will you use?"
-   - Offer the existing frameworks as options: LangGraph, CrewAI, AutoGen, LlamaIndex, Google ADK, Langflow, vanilla Python (OpenAI SDK)
-   - Also offer "A new framework not yet in the repo" — if selected, ask for the framework name
+   - Dynamically list existing frameworks by running `ls agents/` and presenting them as options
+   - Also offer "A framework not listed above" — if selected, ask for the framework name
 
 2. **Template or example**: "Is this a template or an example?"
    - Template = reusable, general-purpose agent that demonstrates a framework + RHOAI integration pattern
@@ -92,15 +92,15 @@ Extract from multiple sources and merge:
 | Source | What to extract |
 |--------|----------------|
 | `agent.yaml` `env.required` + `env.optional` | Map env var names to components (see mapping below) |
-| `.env.example` | Scan for component-related env vars (including commented-out ones) |
+| `.env.example` or `template.env` | Scan for component-related env vars (including commented-out ones) |
 | `pyproject.toml` dependencies | Check for `milvus`, `pymilvus`, `psycopg`, `mlflow`, `mcp` packages |
-| `Dockerfile` / `docker-compose.yaml` | Check for service dependencies |
+| `Dockerfile` or `Containerfile` / `docker-compose.yaml` | Check for service dependencies |
 
 Env var to component mapping:
 
 | Env var pattern | Component | Purpose |
 |----------------|-----------|---------|
-| `BASE_URL`, `MODEL_ID`, `API_KEY` | OGX/vLLM | LLM inference |
+| `BASE_URL` + `MODEL_ID` (co-occurring) | OGX/vLLM | LLM inference |
 | `MLFLOW_*` | MLflow | Tracing/observability |
 | `POSTGRES_*` | PostgreSQL | Persistent memory |
 | `MILVUS_*`, `VECTOR_STORE_*`, `EMBEDDING_*` | Milvus | Vector search (RAG) |
@@ -121,17 +121,20 @@ Check `main.py` for:
 - `POST /chat/completions` route (grep for `"/chat/completions"` or `@app.post`)
 - `GET /health` route (grep for `"/health"` or `@app.get`)
 - SSE streaming support (`StreamingResponse`, `text/event-stream`)
-- If no `main.py`: check for `deploymentModel: flow-import` in `agent.yaml` (accepted alternative)
-- If no main.py and no flow-import: flag as non-standard
+
+If no `main.py` exists:
+
+- Check for `deploymentModel: flow-import` in `agent.yaml` (accepted alternative)
+- Otherwise, **fall back to asking the contributor**: "I couldn't find a standard main.py — does your agent expose POST /chat/completions (JSON + SSE streaming) and GET /health?" Use their answer as the input for this dimension, same as idea mode.
 
 **6. Container pattern:**
 
-Check `Dockerfile` for:
+Check `Dockerfile` or `Containerfile` (whichever exists) for:
 
 - UBI9 base image: grep for `registry.access.redhat.com/ubi9/python-312`
 - Port 8080: grep for `EXPOSE 8080`
 - Non-root UID 1001: grep for `USER 1001`
-- If no `Dockerfile`: flag as non-standard (check for `docker-compose.yaml`, `Containerfile`, or Kustomize manifests)
+- If neither `Dockerfile` nor `Containerfile` exists: flag as non-standard (check for `docker-compose.yaml` or Kustomize manifests)
 
 ## Phase 2: Build Agent Catalog
 
@@ -150,6 +153,8 @@ For each `agent.yaml`, extract:
 - `deploymentModel` — if present (e.g., `flow-import`)
 - RHOAI components — apply the same env var mapping from Phase 1
 
+**In existing agent mode, exclude the agent being evaluated from the catalog.** It would otherwise match itself and produce a false "exact duplicate" RED score.
+
 Also note the directories under `agents/` that have NO `agent.yaml` (deployment-only entries). List them as reference but do not include them in the overlap comparison.
 
 Present the catalog to the user as a table so they can see the full landscape:
@@ -159,6 +164,8 @@ Present the catalog to the user as a table so they can see the full landscape:
 | (populated from agent.yaml files) | | | |
 
 ## Phase 3: Score Each Dimension
+
+Phase 1 collects 6 dimensions (framework, type, components, differentiation, API contract, container pattern). These feed into 4 scoring checks below — Check 1 uses dimensions 1-4, Check 2 uses dimension 3, Check 3 uses dimensions 1+3+4, and Check 4 uses dimensions 5+6.
 
 Run 4 checks. Each produces a GREEN, YELLOW, or RED score with reasoning.
 
@@ -219,7 +226,7 @@ In existing agent mode, check:
 
 - `agent.yaml` — agent metadata
 - `Makefile` — build/deploy interface
-- `.env.example` — environment template
+- `.env.example` or `template.env` — environment template
 - `README.md` — documentation
 - `src/` — source code directory
 - `tests/` — test directory
@@ -284,7 +291,7 @@ agents/<framework>/<templates|examples>/<agent_name>/
 
 [Conditional on score:]
 
-**GREEN**: This agent fits the repo. Proceed with implementation following [docs/adding-a-new-agent.md](docs/adding-a-new-agent.md). Link this discussion in your PR.
+**GREEN**: This agent fits the repo. Proceed with implementation following the [Adding a New Agent](https://github.com/red-hat-data-services/agentic-starter-kits/blob/main/docs/adding-a-new-agent.md) guide. Link this discussion in your PR.
 
 **YELLOW**: This agent may fit but has flagged items that need team discussion. Post this discussion and wait for maintainer/PM feedback before writing code. Address the flagged items in the discussion thread.
 
