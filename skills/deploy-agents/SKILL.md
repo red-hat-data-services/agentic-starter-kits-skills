@@ -43,9 +43,15 @@ podman version 2>/dev/null || docker version 2>/dev/null
 
 If the container CLI is podman, verify the podman machine is running:
 ```bash
-podman machine list        # check if a machine exists
-podman info >/dev/null 2>&1 || podman machine start   # start if not running
+podman machine list --format '{{.Name}}'   # check if any machine exists
 ```
+If no machine is listed, warn the user: "No podman machine found. Run `podman machine init` to create one before deploying."
+
+If a machine exists, check whether it's running:
+```bash
+podman info >/dev/null 2>&1
+```
+If `podman info` fails, warn the user: "Podman machine exists but is not running. Start it with `podman machine start` before deploying." Do **not** auto-start the machine — the user may have stopped it intentionally.
 
 Store the namespace from `oc project -q` — use explicit `-n <namespace>` on every `oc` command for the rest of this workflow. Never rely on the default context.
 
@@ -60,6 +66,12 @@ oc get crd mlflowoperators.components.platform.opendatahub.io 2>/dev/null
 
 1. Verify the MLflow operator is enabled in the DataScienceCluster:
 ```bash
+oc get datasciencecluster -o json | jq '.items | length'
+```
+If the count is 0, warn the user: "No DataScienceCluster found — RHOAI may not be installed correctly." If the count is greater than 1, warn: "Multiple DataScienceClusters found — checking the first one, but this is unexpected."
+
+Then check the operator state:
+```bash
 oc get datasciencecluster -o json | jq '.items[0].spec.components.mlflowoperator.managementState'
 ```
 If it returns `"Removed"`, the MLflow tracking server is **not deployed** — all tracing will fail. Warn the user that `mlflowoperator` must be set to `Managed` in the DataScienceCluster CR before agents can trace.
@@ -68,6 +80,7 @@ If it returns `"Removed"`, the MLflow tracking server is **not deployed** — al
 ```bash
 oc get pods -n redhat-ods-applications -l app=mlflow --no-headers 2>/dev/null | grep -c Running
 ```
+If this returns 0, the MLflow tracking server is **not running** — all tracing will fail. Warn the user that the MLflow pod must be running before agents can trace. Check if `mlflowoperator` is set to `Managed` (see check above) and whether the pod is in a non-Running state (CrashLoopBackOff, Pending, etc.).
 
 3. Verify the namespace has the required workspace label. RHOAI 3.5+ requires namespaces to opt in to MLflow tracking via a label. Without it, agents get `RESOURCE_DOES_NOT_EXIST: Workspace '<namespace>' not found ... matches the configured selector ('mlflow-tracking in (enabled)')`.
 ```bash
@@ -221,7 +234,7 @@ oc get secret <secret-name> -n <namespace> -o json \
   | oc apply --server-side --force-conflicts --field-manager=helm -f -
 ```
 
-This uses server-side apply with `--field-manager=helm` so Helm retains ownership and future `make deploy` won't conflict.
+This uses server-side apply with `--field-manager=helm` so Helm retains ownership and future `make deploy` won't conflict. This intentionally impersonates Helm's field manager identity — using a different manager name would re-introduce the conflict. The trade-off is that field ownership audit trails will attribute this change to Helm rather than the skill.
 
 **If you already have a conflict** from a previous `oc patch`: delete the secret (`oc delete secret <secret-name>`) and run `helm uninstall <release>` followed by `make deploy` to do a clean install that restores Helm's field ownership.
 

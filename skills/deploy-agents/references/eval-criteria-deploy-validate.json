@@ -40,10 +40,10 @@
         },
         {
           "id": "container-cli-connected",
-          "type": "exec",
-          "command": "podman info >/dev/null 2>&1 || docker info >/dev/null 2>&1",
+          "type": "eval",
           "on_fail": "warn",
-          "description": "Container CLI is connected and ready (podman machine running or docker daemon up) -- required unless --token-only"
+          "description": "The chosen container CLI is connected and ready -- if podman was selected, podman machine must be running; if docker was selected, docker daemon must be up. Required unless --token-only.",
+          "pass_if": "The skill tested readiness of the specific container CLI it chose (podman info or docker info), not just any available CLI. If podman is the chosen CLI, a running podman machine was confirmed."
         },
         {
           "id": "args-provided",
