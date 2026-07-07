@@ -144,6 +144,37 @@ Empty file.
 
 The file structure depends on the traits discovered in Phase 1. The primary axes are `deploy_method` and `has_extra_env_vars`. All patterns produce the same three files, but the distribution of logic differs.
 
+### Standard teardown block
+
+All lifecycle-based deployment patterns (`openshift_build` and `external_registry`) share the same `finally:` teardown logic. Rather than duplicating it in every template, the block is defined once here. Each `deployed_agent` fixture template below references this block.
+
+```python
+    finally:
+        if deployed:
+            logger.info("Tearing down deployment...")
+            try:
+                run_make("undeploy", cwd=agent_dir, timeout=120)
+            except MakeTargetError:
+                logger.warning(
+                    "Cleanup failed — manual undeploy may be needed", exc_info=True
+                )
+        env_path.unlink(missing_ok=True)
+```
+
+**Variant for `openshift_build` with no extra env vars**: These agents may have a pre-existing `.env` that needs restoring. Replace `env_path.unlink(missing_ok=True)` with:
+
+```python
+        if orig_env is not None:
+            try:
+                env_path.write_text(orig_env, encoding="utf-8")
+            except Exception:
+                logger.exception("Failed to restore pre-existing .env at %s", env_path)
+        else:
+            env_path.unlink(missing_ok=True)
+```
+
+**`pre_deployed` agents** have no teardown — the `deployed_agent` fixture yields the route with no `finally:` block.
+
 ---
 
 ### If `deploy_method` is `openshift_build` and `has_extra_env_vars` is false (no extra env vars)
@@ -172,7 +203,7 @@ def _write_env_file(agent_dir, container_image):
     missing = [v for v in ("BASE_URL", "MODEL_ID") if v not in os.environ]
     if missing:
         pytest.fail(
-            f"Missing required env vars: {', '.join(missing)}. "
+            f"Missing required env vars for this agent: {', '.join(missing)}. "
             "Set them in the CI workflow or export locally."
         )
     env_path = agent_dir / ".env"
@@ -216,21 +247,7 @@ def deployed_agent(cluster_auth, agent_dir, agent_name):
         pytest.fail(f"Deployment failed: {exc}")
 
     finally:
-        if deployed:
-            logger.info("Tearing down deployment...")
-            try:
-                run_make("undeploy", cwd=agent_dir, timeout=120)
-            except MakeTargetError:
-                logger.warning(
-                    "Cleanup failed — manual undeploy may be needed", exc_info=True
-                )
-        if orig_env is not None:
-            try:
-                env_path.write_text(orig_env, encoding="utf-8")
-            except Exception:
-                logger.exception("Failed to restore pre-existing .env at %s", env_path)
-        else:
-            env_path.unlink(missing_ok=True)
+        # >>> Standard teardown block (with .env restore variant) — see above <<<
 ```
 
 ---
@@ -318,20 +335,12 @@ def deployed_agent(cluster_auth, agent_dir, agent_name):
         except (MakeTargetError, RouteNotFoundError) as exc:
             pytest.fail(f"Deployment failed: {exc}")
         except Exception as exc:
-            pytest.fail(f"Unexpected error during deployment setup: {exc}")
+            pytest.fail("Deployment failed — see logs")
 
         yield route_url
 
     finally:
-        if deployed:
-            logger.info("Tearing down deployment...")
-            try:
-                run_make("undeploy", cwd=agent_dir, timeout=120)
-            except MakeTargetError:
-                logger.warning(
-                    "Cleanup failed — manual undeploy may be needed", exc_info=True
-                )
-        env_path.unlink(missing_ok=True)
+        # >>> Standard teardown block — see above <<<
 ```
 
 Key differences from the no-extra-env-vars pattern:
@@ -449,20 +458,12 @@ def deployed_agent(cluster_auth, agent_dir, agent_name):
         except (MakeTargetError, RouteNotFoundError) as exc:
             pytest.fail(f"Deployment failed: {exc}")
         except Exception as exc:
-            pytest.fail(f"Unexpected error during deployment setup: {exc}")
+            pytest.fail("Deployment failed — see logs")
 
         yield route_url
 
     finally:
-        if deployed:
-            logger.info("Tearing down deployment...")
-            try:
-                run_make("undeploy", cwd=agent_dir, timeout=120)
-            except MakeTargetError:
-                logger.warning(
-                    "Cleanup failed — manual undeploy may be needed", exc_info=True
-                )
-        env_path.unlink(missing_ok=True)
+        # >>> Standard teardown block — see above <<<
 ```
 
 Key differences from the `openshift_build` patterns:
@@ -481,11 +482,13 @@ If `has_multiple_deployments` is true, the `deployed_agent` fixture must discove
 _DEPLOYMENT_NAMES = ["<DEPLOY_NAME_1>", "<DEPLOY_NAME_2>"]
 # ^^^ Replace with actual deployment names discovered in Phase 1
 
+_discovered_routes = {}
+
 
 @pytest.fixture(scope="module")
 def all_routes(deployed_agent):
     """Routes for all deployments, populated by deployed_agent fixture."""
-    return getattr(all_routes, "_routes", {})
+    return _discovered_routes
 
 
 @pytest.fixture(scope="module")
@@ -506,30 +509,20 @@ def deployed_agent(cluster_auth, agent_dir, agent_name):
             run_make("deploy", cwd=agent_dir, timeout=300)
             deployed = True
 
-            routes = {}
             for deploy_name in _DEPLOYMENT_NAMES:
-                routes[deploy_name] = get_route(deploy_name, namespace=namespace)
-                logger.info("Deployment %s at %s", deploy_name, routes[deploy_name])
-            all_routes._routes = routes
+                _discovered_routes[deploy_name] = get_route(deploy_name, namespace=namespace)
+                logger.info("Deployment %s at %s", deploy_name, _discovered_routes[deploy_name])
 
-            primary = next(iter(routes.values()))
+            primary = next(iter(_discovered_routes.values()))
         except (MakeTargetError, RouteNotFoundError) as exc:
             pytest.fail(f"Deployment failed: {exc}")
         except Exception as exc:
-            pytest.fail(f"Unexpected error during deployment setup: {exc}")
+            pytest.fail("Deployment failed — see logs")
 
         yield primary
 
     finally:
-        if deployed:
-            logger.info("Tearing down deployment...")
-            try:
-                run_make("undeploy", cwd=agent_dir, timeout=120)
-            except MakeTargetError:
-                logger.warning(
-                    "Cleanup failed — manual undeploy may be needed", exc_info=True
-                )
-        env_path.unlink(missing_ok=True)
+        # >>> Standard teardown block — see above <<<
 ```
 
 Replace `<DEPLOY_NAME_*>` with the actual deployment names discovered in Phase 1 (e.g., `["a2a-langgraph-agent", "a2a-crew-agent"]`).
@@ -629,7 +622,7 @@ def test_health_endpoint(deployed_agent):
     resp = requests.get(
         f"{route_url}/.well-known/agent-card.json",
         timeout=30,
-        verify=False,
+        verify=os.getenv("CLUSTER_CA_BUNDLE", False),
     )
     assert resp.status_code == 200, f"Agent card endpoint returned {resp.status_code}"
     card = resp.json()
@@ -647,7 +640,7 @@ def test_health_endpoint(deployed_agent):
     resp = requests.get(
         f"{route_url}<HEALTH_ENDPOINT>",
         timeout=30,
-        verify=False,
+        verify=os.getenv("CLUSTER_CA_BUNDLE", False),
     )
     assert resp.status_code == 200, f"Health endpoint returned {resp.status_code}"
 ```
@@ -670,7 +663,7 @@ def test_all_deployments_healthy(all_routes):
         resp = requests.get(
             f"{route_url}<HEALTH_ENDPOINT>",
             timeout=30,
-            verify=False,
+            verify=os.getenv("CLUSTER_CA_BUNDLE", False),
         )
         assert resp.status_code == 200, (
             f"Deployment {name} health check failed: HTTP {resp.status_code}"
