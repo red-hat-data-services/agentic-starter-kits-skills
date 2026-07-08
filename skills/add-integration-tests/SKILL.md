@@ -614,60 +614,91 @@ def test_health_endpoint(deployed_agent):
 **`agent_card`** (health is verified via the A2A agent card endpoint):
 
 ```python
+import os
+import time
+
 import requests
 
 @pytest.mark.integration
 def test_health_endpoint(deployed_agent):
     route_url = deployed_agent
-    resp = requests.get(
-        f"{route_url}/.well-known/agent-card.json",
-        timeout=30,
-        verify=os.getenv("CLUSTER_CA_BUNDLE", False),
-    )
-    assert resp.status_code == 200, f"Agent card endpoint returned {resp.status_code}"
-    card = resp.json()
-    assert "name" in card, "Agent card missing 'name' field"
+    url = f"{route_url}/.well-known/agent-card.json"
+    verify = os.getenv("CLUSTER_CA_BUNDLE", False)
+    last_exc = None
+    for attempt in range(12):
+        try:
+            resp = requests.get(url, timeout=30, verify=verify)
+            if resp.status_code == 200:
+                card = resp.json()
+                assert "name" in card, "Agent card missing 'name' field"
+                return
+        except requests.RequestException as exc:
+            last_exc = exc
+        time.sleep(5.0)
+    pytest.fail(f"Agent card not available after 12 retries: {last_exc or resp.status_code}")
 ```
 
 **`http_200`** (just verify the endpoint returns HTTP 200):
 
 ```python
+import os
+import time
+
 import requests
 
 @pytest.mark.integration
 def test_health_endpoint(deployed_agent):
     route_url = deployed_agent
-    resp = requests.get(
-        f"{route_url}<HEALTH_ENDPOINT>",
-        timeout=30,
-        verify=os.getenv("CLUSTER_CA_BUNDLE", False),
-    )
-    assert resp.status_code == 200, f"Health endpoint returned {resp.status_code}"
+    url = f"{route_url}<HEALTH_ENDPOINT>"
+    verify = os.getenv("CLUSTER_CA_BUNDLE", False)
+    last_exc = None
+    for attempt in range(12):
+        try:
+            resp = requests.get(url, timeout=30, verify=verify)
+            if resp.status_code == 200:
+                return
+        except requests.RequestException as exc:
+            last_exc = exc
+        time.sleep(5.0)
+    pytest.fail(f"Health endpoint not available after 12 retries: {last_exc or resp.status_code}")
 ```
 
 Replace `<HEALTH_ENDPOINT>` with the discovered `health_endpoint` path.
 
-Use `health_check()` from `integration.utils` for `standard` and `status_only` schemas (it handles retries and backoff). For `agent_card` and `http_200`, use `requests.get()` directly — `health_check()` assumes JSON with specific fields.
+Use `health_check()` from `integration.utils` for `standard` and `status_only` schemas (it handles retries and backoff). For `agent_card` and `http_200`, the templates above include equivalent retry logic (12 attempts, 5s backoff) since `health_check()` assumes JSON with specific fields.
 
 ### Multi-deployment health test
 
 If `has_multiple_deployments` is true, add a second test in `test_deployment.py` that verifies all deployments:
 
 ```python
+import os
+import time
+
+import requests
+
 @pytest.mark.integration
 def test_all_deployments_healthy(all_routes):
     """Verify every deployment in the multi-component agent is healthy."""
     assert all_routes, "No routes discovered — deployment may have failed"
+    verify = os.getenv("CLUSTER_CA_BUNDLE", False)
     for name, route_url in all_routes.items():
         # Use the appropriate health assertion for the discovered health_response_schema
-        resp = requests.get(
-            f"{route_url}<HEALTH_ENDPOINT>",
-            timeout=30,
-            verify=os.getenv("CLUSTER_CA_BUNDLE", False),
-        )
-        assert resp.status_code == 200, (
-            f"Deployment {name} health check failed: HTTP {resp.status_code}"
-        )
+        url = f"{route_url}<HEALTH_ENDPOINT>"
+        last_exc = None
+        for attempt in range(12):
+            try:
+                resp = requests.get(url, timeout=30, verify=verify)
+                if resp.status_code == 200:
+                    break
+            except requests.RequestException as exc:
+                last_exc = exc
+            time.sleep(5.0)
+        else:
+            pytest.fail(
+                f"Deployment {name} health check failed after 12 retries: "
+                f"{last_exc or resp.status_code}"
+            )
 ```
 
 Adapt the inner assertions to match the discovered `health_response_schema` for the agent.
@@ -719,9 +750,9 @@ strategy:
   matrix:
     agent:
       # ... existing entries ...
-      - { name: <framework>-<agent-slug>, dir: agents/<framework>/templates/<agent_name> }
+      - { name: <framework>-<agent-slug>, dir: agents/<agent_path> }
     include:
-      - agent: { name: <framework>-<agent-slug>, dir: agents/<framework>/templates/<agent_name> }
+      - agent: { name: <framework>-<agent-slug>, dir: agents/<agent_path> }
         EXTRA_VAR_1: ${{ vars.EXTRA_VAR_1 }}
         EXTRA_VAR_2: ${{ secrets.EXTRA_VAR_2 }}
 ```
