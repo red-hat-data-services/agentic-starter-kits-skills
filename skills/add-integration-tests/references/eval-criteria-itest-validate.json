@@ -22,11 +22,11 @@
           "description": "Agent directory exists under agents/"
         },
         {
-          "id": "standard-agent",
+          "id": "agent-entrypoint",
           "type": "exec",
-          "command": "test -f agents/${AGENT_PATH}/main.py",
+          "command": "test -f agents/${AGENT_PATH}/main.py -o -f agents/${AGENT_PATH}/entrypoint.sh -o $(grep -c 'deploymentModel:' agents/${AGENT_PATH}/agent.yaml 2>/dev/null || echo 0) -gt 0",
           "on_fail": "warn",
-          "description": "Agent has main.py (standard agent pattern)"
+          "description": "Agent has a recognized entrypoint (main.py, entrypoint.sh, or deploymentModel in agent.yaml)"
         },
         {
           "id": "agent-yaml-exists",
@@ -40,7 +40,7 @@
           "type": "exec",
           "command": "test -f agents/${AGENT_PATH}/Makefile",
           "on_fail": "warn",
-          "description": "Agent has Makefile with deploy targets"
+          "description": "Agent has Makefile"
         },
         {
           "id": "no-existing-itests",
@@ -60,7 +60,7 @@
           "id": "agent-arg",
           "type": "eval",
           "description": "Agent path argument provided and non-empty",
-          "pass_if": "First word of skill args contains a / separator (e.g. google/adk)"
+          "pass_if": "First word of skill args contains a / separator (e.g. a2a/langgraph_crewai_agent)"
         }
       ]
     },
@@ -116,6 +116,12 @@
             "command": "grep -q 'deployed_agent' agents/${AGENT_PATH}/tests/integration/test_deployment.py",
             "on_fail": "block",
             "description": "test_deployment.py uses deployed_agent fixture"
+          },
+          {
+            "id": "deploy-method-consistent",
+            "type": "eval",
+            "description": "Deployment method in fixture matches discovered deploy_method trait",
+            "pass_if": "If deploy_method is openshift_build: deployed_agent fixture calls run_make('build-openshift') and INTERNAL_REGISTRY constant is present. If deploy_method is external_registry: deployed_agent fixture calls run_make('build') + run_make('push'), CONTAINER_IMAGE is in _REQUIRED_ENV, and no INTERNAL_REGISTRY constant exists. If deploy_method is pre_deployed: deployed_agent fixture only discovers existing route with get_route(), no run_make calls, no _write_env_file, no teardown."
           }
         ]
       },
@@ -170,7 +176,7 @@
             "id": "collect-ok",
             "type": "eval",
             "description": "pytest --collect-only passes with no import errors",
-            "pass_if": "Running PYTHONPATH=$(git rev-parse --show-toplevel)/tests uv run --extra dev python -m pytest tests/integration/test_deployment.py --collect-only -q from the agent dir shows 1 test collected, no errors"
+            "pass_if": "Running PYTHONPATH=$(git rev-parse --show-toplevel)/tests uv run --extra dev python -m pytest tests/integration/test_deployment.py --collect-only -q from the agent dir shows at least 1 test collected (1 for standard agents, 2 for has_multiple_deployments agents), no errors"
           }
         ]
       },
@@ -188,11 +194,11 @@
             "id": "live-test-passed",
             "type": "eval",
             "description": "make test-integration passed against live cluster",
-            "pass_if": "make test-integration completed with exit 0, test_health_endpoint PASSED, agent was deployed, health-checked, and torn down successfully. OR: cluster not available, test skipped with reason documented."
+            "pass_if": "make test-integration completed with exit 0, test_health_endpoint PASSED, agent was deployed (or pre-deployed agent was verified), health-checked, and torn down (if applicable). OR: cluster not available / registry auth unavailable, test skipped with reason documented."
           }
         ],
         "waiver": {
-          "condition": "No cluster access available (oc whoami fails or not in ci-testing namespace)",
+          "condition": "No cluster access available (oc whoami fails or not in ci-testing namespace), or external registry auth unavailable for external_registry agents",
           "action": "Skip live test, document that it was not run. Test collection (5a) is sufficient for PR."
         }
       },
@@ -203,19 +209,31 @@
             "id": "conftest-matches-pattern",
             "type": "eval",
             "description": "conftest.py follows the correct pattern for the agent's discovered capabilities",
-            "pass_if": "If agent has no extra env vars: conftest.py is a 2-line re-export using 'from integration.conftest import cluster_auth, repo_root'. If agent has extra env vars: conftest.py is a full file that also uses 'from integration.conftest import cluster_auth, repo_root' and additionally contains INTERNAL_REGISTRY, _REQUIRED_ENV tuple, agent_dir/agent_name fixtures, _write_env_file function, and deployed_agent fixture."
+            "pass_if": "conftest.py uses 'from integration.conftest import cluster_auth, repo_root'. For openshift_build with no extra env vars: 2-line re-export. For openshift_build with extra env vars: full file with INTERNAL_REGISTRY, _REQUIRED_ENV, fixtures, _write_env_file, deployed_agent using build-openshift. For external_registry: full file with _REQUIRED_ENV (including CONTAINER_IMAGE), fixtures, _write_env_file, deployed_agent using build+push+deploy. For pre_deployed: minimal file with fixtures and deployed_agent that only discovers existing route."
           },
           {
             "id": "test-structure-matches",
             "type": "eval",
             "description": "test_deployment.py follows the correct structure for the agent's discovered capabilities",
-            "pass_if": "If agent has no extra env vars: test_deployment.py contains INTERNAL_REGISTRY, agent_dir fixture, agent_name fixture, _write_env_file, deployed_agent fixture, and test_health_endpoint. If agent has extra env vars: test_deployment.py is minimal — only imports and @pytest.mark.integration test_health_endpoint function with health_check() call asserting status=='healthy' and agent_initialized is True."
+            "pass_if": "For openshift_build with no extra env vars: test_deployment.py contains INTERNAL_REGISTRY, agent_dir, agent_name, _write_env_file, deployed_agent, and test_health_endpoint. For all other deploy_method/env combinations: test_deployment.py is minimal — only imports, test_health_endpoint, and (if has_multiple_deployments) test_all_deployments_healthy."
           },
           {
             "id": "env-vars-correct",
             "type": "eval",
             "description": "_write_env_file validates the correct required env vars for this agent",
-            "pass_if": "The required env vars checked in _write_env_file match what the agent actually needs based on agent.yaml and .env.example. Agents with no extra vars check ('BASE_URL', 'MODEL_ID'). Agents with extra vars define a _REQUIRED_ENV tuple that includes all discovered extra vars."
+            "pass_if": "For openshift_build with no extra vars: checks ('BASE_URL', 'MODEL_ID'). For openshift_build with extra vars: _REQUIRED_ENV includes all discovered extra vars. For external_registry: _REQUIRED_ENV includes CONTAINER_IMAGE plus any extra vars. For pre_deployed: no _write_env_file function exists."
+          },
+          {
+            "id": "health-endpoint-consistent",
+            "type": "eval",
+            "description": "Health endpoint and assertions match the discovered traits",
+            "pass_if": "Health endpoint path in test matches discovered health_endpoint. Assertions match health_response_schema: 'standard' checks status+agent_initialized, 'status_only' checks status only, 'agent_card' validates JSON structure with name field, 'http_200' checks status code only."
+          },
+          {
+            "id": "multi-deploy-coverage",
+            "type": "eval",
+            "description": "Multi-deployment agents verify all components",
+            "pass_if": "If has_multiple_deployments is true: test_all_deployments_healthy exists and checks each deployment name in _DEPLOYMENT_NAMES. If has_multiple_deployments is false: single deployed_agent route is sufficient, no test_all_deployments_healthy needed."
           }
         ]
       }
@@ -248,19 +266,19 @@
           "id": "collection-passed",
           "type": "eval",
           "description": "Phase 5a: Test collection passed",
-          "pass_if": "pytest --collect-only succeeded with 1 test collected and no errors"
+          "pass_if": "pytest --collect-only succeeded with at least 1 test collected (2 for has_multiple_deployments agents) and no errors"
         },
         {
           "id": "live-test-status",
           "type": "eval",
           "description": "Phase 5b: Live test result documented",
-          "pass_if": "Live integration test either passed (PASS) or was skipped due to no cluster access (WAIVED with reason)"
+          "pass_if": "Live integration test either passed (PASS) or was skipped due to no cluster access / missing registry auth (WAIVED with reason)"
         },
         {
           "id": "consistency-check",
           "type": "eval",
           "description": "Phase 5c: Cross-agent consistency verified",
-          "pass_if": "New test files follow the correct pattern for the agent's discovered capabilities: no-extra-env-vars agents use 2-line conftest re-export + full test_deployment.py; extra-env-vars agents use full conftest.py with fixtures + minimal test_deployment.py. Env vars in _write_env_file match agent.yaml."
+          "pass_if": "New test files follow the correct pattern for the agent's discovered capabilities: openshift_build agents with no extra env vars use 2-line conftest re-export + full test_deployment.py; openshift_build with extra env vars use full conftest.py + minimal test_deployment.py; external_registry agents use full conftest.py with build+push+deploy and CONTAINER_IMAGE + minimal test_deployment.py; pre_deployed agents use minimal conftest.py with route-only discovery + minimal test_deployment.py. Health assertions match discovered health_response_schema. Multi-deployment agents verify all components. Env vars in _write_env_file match agent.yaml and env template."
         }
       ]
     }
