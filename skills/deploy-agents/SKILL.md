@@ -7,8 +7,8 @@ argument-hint: "<agent_paths or 'all'> [--token-only]"
 # Deploy Agents to OpenShift
 
 > **Usage:**
-> - `/agentic-starter-kits-skills:deploy-agents crewai/websearch_agent` — deploy one agent
-> - `/agentic-starter-kits-skills:deploy-agents crewai/websearch_agent langgraph/react_agent` — deploy multiple
+> - `/agentic-starter-kits-skills:deploy-agents crewai/templates/websearch_agent` — deploy one agent
+> - `/agentic-starter-kits-skills:deploy-agents crewai/templates/websearch_agent langgraph/templates/react_agent` — deploy multiple
 > - `/agentic-starter-kits-skills:deploy-agents all` — deploy all standard agents
 > - `/agentic-starter-kits-skills:deploy-agents --token-only` — only refresh MLflow tokens, no deployment
 
@@ -19,7 +19,7 @@ You are deploying agents to the agentic-mcp OpenShift cluster. This skill automa
 Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
-- **Target agents**: space-separated paths relative to `agents/` (e.g., `crewai/websearch_agent`), or `all`
+- **Target agents**: space-separated paths relative to `agents/` (e.g., `crewai/templates/websearch_agent`), or `all`
 - **Token-only mode**: if `--token-only` is present, skip Steps 1–3 and go directly to Step 4
 
 If no arguments are provided, ask the user what to deploy.
@@ -52,6 +52,8 @@ If a machine exists, check whether it's running:
 podman info >/dev/null 2>&1
 ```
 If `podman info` fails, warn the user: "Podman machine exists but is not running. Start it with `podman machine start` before deploying." Do **not** auto-start the machine — the user may have stopped it intentionally.
+
+**Podman/Docker fallback**: The agent Makefiles auto-detect the container CLI via `command -v podman || command -v docker`. If podman is installed but not running, the Makefile picks podman and fails. When Docker is available as a fallback, pass `CONTAINER_CLI=docker` to all `make build`, `make push`, and `make deploy` commands (e.g., `make build CONTAINER_CLI=docker`). Store whichever CLI is working and use it consistently.
 
 Store the namespace from `oc project -q` — use explicit `-n <namespace>` on every `oc` command for the rest of this workflow. Never rely on the default context.
 
@@ -98,17 +100,17 @@ oc label namespace <namespace> mlflow-tracking=enabled
 ## Step 1: Resolve Target Agents
 
 If argument is `all`:
-1. List all directories under `agents/` that contain both `agent.yaml` and a `Makefile`
-2. Filter to only standard agents: those whose `values.yaml` references `charts/agent/` (check for `chart:` field or Makefile `CHART_PATH`)
-3. **Skip with warning**: `langflow/simple_tool_calling_agent` (docker-compose based), `a2a/langgraph_crewai_agent` (custom chart)
+1. List all directories under `agents/` (structure: `agents/<framework>/templates/<agent>/`) that contain both `agent.yaml` and a `Makefile`
+2. Filter to only standard agents: those whose Makefile references the shared Helm chart (check for `CHART_DIR` pointing to `../../deployment` or a `helm upgrade` command)
+3. **Skip with warning**: `langflow/templates/simple_tool_calling_agent` (docker-compose based, uses `COMPOSE_FILE` instead of Helm)
 
 If specific paths given:
-1. For each path, verify `agents/<path>/agent.yaml` exists
-2. Warn and skip any non-standard agents
+1. For each path, verify `agents/<path>/agent.yaml` exists (paths can be either `<framework>/<agent>` or `<framework>/templates/<agent>` — resolve both)
+2. Warn and skip any non-standard agents (those without a `helm upgrade` in their Makefile)
 
 Report the final list of agents to deploy before proceeding.
 
-> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories, agent.yaml, Makefile exist; non-standard agents excluded.
+> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories (`agents/<framework>/templates/<agent>/`), agent.yaml, Makefile exist; non-standard agents (docker-compose based) excluded.
 
 ## Step 2: Auto-Detect Cluster Config
 
@@ -176,15 +178,17 @@ Write the `.env` file in the agent directory with:
 If building:
 ```bash
 cd agents/<path>
-make build
-make push
+make build CONTAINER_CLI=<container-cli>
+make push CONTAINER_CLI=<container-cli>
 ```
 
 ### 3f: Deploy via Helm
 ```bash
 cd agents/<path>
-make deploy
+make deploy CONTAINER_CLI=<container-cli>
 ```
+
+Where `<container-cli>` is the working container CLI determined in Step 0 (e.g., `docker` or `podman`).
 
 ### 3g: Verify health
 Wait a few seconds for the pod to start, then:
@@ -322,12 +326,12 @@ Verify health as in Step 3g. Remember that `/health` returns `200 OK` even when 
 Print a summary table:
 
 ```
-Agent                          | Status      | Route                                    | Health | Token
--------------------------------|-------------|------------------------------------------|--------|--------
-crewai/websearch_agent         | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
-langgraph/react_agent          | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
-langgraph/hitl_agent           | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
-autogen/chat_agent             | failed      | —                                        | —      | —
+Agent                                    | Status      | Route                                    | Health | Token
+-----------------------------------------|-------------|------------------------------------------|--------|--------
+crewai/templates/websearch_agent         | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
+langgraph/templates/react_agent          | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
+langgraph/templates/human_in_the_loop    | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
+autogen/templates/mcp_agent              | failed      | —                                        | —      | —
 ```
 
 If any agents failed, show the failure reason and suggest next steps.
@@ -458,7 +462,7 @@ See Step 4c for the correct patching approach that avoids this conflict.
 ## Key Constraints
 
 - **Namespace isolation**: All `oc` commands use explicit `-n <namespace>`. Never touch resources outside the current namespace.
-- **No chart modifications**: Never modify `charts/agent/` templates.
+- **No chart modifications**: Never modify the shared Helm chart in `agents/<framework>/deployment/` templates.
 - **No .env commits**: `.env` files are written but never staged or committed.
 - **Token refresh is comprehensive**: Step 4 covers ALL agents in the namespace, not just targets.
 - **Ask before destructive actions**: Always confirm before redeploying an existing agent or rebuilding an image.

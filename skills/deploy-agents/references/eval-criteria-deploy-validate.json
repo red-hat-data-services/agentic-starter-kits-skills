@@ -117,7 +117,7 @@
             "id": "nonstandard-excluded",
             "type": "eval",
             "description": "Non-standard agents excluded from target list",
-            "pass_if": "langflow/simple_tool_calling_agent and a2a/langgraph_crewai_agent are NOT in the resolved target list. If 'all' was specified, they were filtered out with a warning."
+            "pass_if": "langflow/templates/simple_tool_calling_agent (docker-compose based, no Helm chart) is NOT in the resolved target list. If 'all' was specified, it was filtered out with a warning."
           },
           {
             "id": "target-list-reported",
@@ -405,9 +405,9 @@
         {
           "id": "no-chart-modifications",
           "type": "exec",
-          "command": "! git diff --name-only | grep -q 'charts/agent/'",
+          "command": "! git diff --name-only | grep -qE 'agents/.*/deployment/(templates|Chart\\.yaml|values\\.yaml)'",
           "on_fail": "block",
-          "description": "charts/agent/ templates were not modified"
+          "description": "Shared Helm chart in agents/<framework>/deployment/ was not modified"
         },
         {
           "id": "namespace-consistent",
