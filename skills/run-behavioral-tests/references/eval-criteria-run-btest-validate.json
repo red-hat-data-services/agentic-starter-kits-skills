@@ -80,7 +80,7 @@
           "id": "mlflow-experiment",
           "type": "eval",
           "description": "MLFLOW_EXPERIMENT_NAME set",
-          "pass_if": "Environment variable is set to a meaningful experiment name"
+          "pass_if": "Environment variable is set to a per-agent experiment name (e.g. <namespace>/<deployment-name>). Each agent MUST have a unique experiment name -- a shared name causes MLflow trace cross-contamination (RHAIENG-6743). The run-btests-pytest.sh script auto-detects per-agent names from each deployment."
         },
         {
           "id": "mlflow-workspace",
