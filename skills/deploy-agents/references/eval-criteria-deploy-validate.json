@@ -111,7 +111,7 @@
             "id": "config-extracted",
             "type": "eval",
             "description": "Required config values were extracted or prompted",
-            "pass_if": "BASE_URL, MODEL_ID, API_KEY, MLFLOW_TRACKING_URI, MLFLOW_WORKSPACE, container registry prefix were all resolved -- either auto-detected from an existing deployment or explicitly requested from the user. MLFLOW_EXPERIMENT_NAME is NOT auto-detected here -- it is generated per-agent in Step 3d as <namespace>/<deployment-name>"
+            "pass_if": "BASE_URL, MODEL_ID, API_KEY, MLFLOW_TRACKING_URI, MLFLOW_WORKSPACE, container registry prefix were all resolved -- either auto-detected from an existing deployment or explicitly requested from the user. EMBEDDING_MODEL, EMBEDDING_DIMENSION, VECTOR_STORE_PROVIDER are extracted if present (used by RAG agents). MLFLOW_EXPERIMENT_NAME is NOT auto-detected here -- it is generated per-agent in Step 3d as <namespace>/<deployment-name>"
           },
           {
             "id": "secrets-not-logged",

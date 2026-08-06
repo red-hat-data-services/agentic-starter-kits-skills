@@ -76,6 +76,9 @@ From the **first standard agent deployment found**, extract:
 | `MLFLOW_TRACKING_URI` | env var from deployment spec |
 | `MLFLOW_TRACKING_INSECURE_TLS` | env var from deployment spec |
 | `MLFLOW_WORKSPACE` | env var from deployment spec |
+| `EMBEDDING_MODEL` | env var from deployment spec (if present — used by RAG agents) |
+| `EMBEDDING_DIMENSION` | env var from deployment spec (if present — used by RAG agents) |
+| `VECTOR_STORE_PROVIDER` | env var from deployment spec (if present — used by RAG agents) |
 | Container image registry prefix | from deployment image spec (e.g., `quay.io/adonheis/`) |
 
 **Do NOT extract `MLFLOW_EXPERIMENT_NAME` from shared config.** Each agent MUST have its own unique experiment name to prevent MLflow trace cross-contamination (see RHAIENG-6743). The experiment name is generated per-agent in Step 3d.
@@ -98,7 +101,8 @@ If it already exists, ask the user whether to redeploy or skip.
 
 ### 3b: Read agent requirements
 Read `agent.yaml` in the agent directory to discover required env vars. For agents with extra requirements beyond the standard set (e.g., `POSTGRES_*` for db-memory agents, `MCP_SERVER_URL` for autogen agents):
-- Try to auto-detect from an existing deployment of the same agent
+- Use shared config from Step 2 first (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `VECTOR_STORE_PROVIDER` are commonly shared across RAG agents in the same namespace)
+- Try to auto-detect remaining values from an existing deployment of the same agent
 - If not found, ask the user
 
 ### 3c: Check container image
