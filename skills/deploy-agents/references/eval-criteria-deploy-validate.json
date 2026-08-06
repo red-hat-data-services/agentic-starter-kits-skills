@@ -159,6 +159,12 @@
             "description": ".env file is NOT staged for git commit"
           },
           {
+            "id": "rag-vector-store-ready",
+            "type": "eval",
+            "description": "RAG agents have VECTOR_STORE_ID set before deployment",
+            "pass_if": "For agents with the 'rag' label in agent.yaml: VECTOR_STORE_ID was either auto-detected from an existing deployment or created by running make load-docs (Step 3d-rag). The .env file contains a non-empty VECTOR_STORE_ID before make deploy runs. Non-RAG agents skip this check."
+          },
+          {
             "id": "make-deploy-ran",
             "type": "eval",
             "description": "make deploy executed successfully for the agent",

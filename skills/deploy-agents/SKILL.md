@@ -79,6 +79,7 @@ From the **first standard agent deployment found**, extract:
 | `EMBEDDING_MODEL` | env var from deployment spec (if present — used by RAG agents) |
 | `EMBEDDING_DIMENSION` | env var from deployment spec (if present — used by RAG agents) |
 | `VECTOR_STORE_PROVIDER` | env var from deployment spec (if present — used by RAG agents) |
+| `VECTOR_STORE_ID` | env var from deployment spec (if present — required by RAG agents at runtime) |
 | Container image registry prefix | from deployment image spec (e.g., `quay.io/adonheis/`) |
 
 **Do NOT extract `MLFLOW_EXPERIMENT_NAME` from shared config.** Each agent MUST have its own unique experiment name to prevent MLflow trace cross-contamination (see RHAIENG-6743). The experiment name is generated per-agent in Step 3d.
@@ -105,6 +106,10 @@ Read `agent.yaml` in the agent directory to discover required env vars. For agen
 - Try to auto-detect remaining values from an existing deployment of the same agent
 - If not found, ask the user
 
+**RAG agents** (labels include `rag` in `agent.yaml`) have additional requirements:
+- `VECTOR_STORE_ID` — **required at runtime**. Without it the agent crashes: `"VECTOR_STORE_ID env var is not set"`. Auto-detect from an existing deployment's env vars. If not found, documents must be loaded first (see Step 3d-rag below).
+- `DOCS_TO_LOAD` — path to the knowledge base file (defaults to `./data/sample_knowledge.txt`). Only needed if creating a new vector store.
+
 ### 3c: Check container image
 Check if the container image already exists in the registry:
 ```bash
@@ -125,6 +130,19 @@ Write the `.env` file in the agent directory with:
 - Any agent-specific extra vars from Step 3b
 
 **Never commit .env files** — they are already in `.gitignore`.
+
+### 3d-rag: Load documents into vector store (RAG agents only)
+
+If the agent has the `rag` label in `agent.yaml` and `VECTOR_STORE_ID` is **not set** (no existing vector store found in Step 3b):
+
+1. Run `make load-docs` from the agent directory — this executes `data/load_documents.py` which:
+   - Creates a new vector store via OGX using `VECTOR_STORE_PROVIDER` and `EMBEDDING_MODEL`
+   - Chunks and embeds documents from `DOCS_TO_LOAD`
+   - Writes the new `VECTOR_STORE_ID` back into the agent's `.env` file
+2. After `load_documents.py` completes, re-read the `.env` to pick up the generated `VECTOR_STORE_ID`
+3. The `VECTOR_STORE_ID` is now baked into the deployment — subsequent deploys auto-detect it from the existing deployment (Step 3b)
+
+If `VECTOR_STORE_ID` **is already set** (auto-detected from an existing deployment), skip this step — the vector store already has documents loaded.
 
 ### 3e: Build and push (if needed)
 If building:
