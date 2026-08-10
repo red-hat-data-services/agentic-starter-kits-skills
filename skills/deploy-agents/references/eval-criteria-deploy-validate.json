@@ -80,8 +80,8 @@
           {
             "id": "nonstandard-excluded",
             "type": "eval",
-            "description": "Non-standard agents excluded from target list",
-            "pass_if": "langflow/simple_tool_calling_agent and a2a/langgraph_crewai_agent are NOT in the resolved target list. If 'all' was specified, they were filtered out with a warning."
+            "description": "Unsupported non-standard agents excluded from target list",
+            "pass_if": "a2a/langgraph_crewai_agent is NOT in the resolved target list. If 'all' was specified, it was filtered out with a warning. langflow/simple_tool_calling_agent IS included but categorized as flow-based (routed to Step 3-langflow, not Steps 3a-3g)."
           },
           {
             "id": "target-list-reported",
@@ -204,6 +204,35 @@
             "type": "eval",
             "description": "If health failed, pod logs were checked for diagnosis",
             "pass_if": "If health check failed: oc logs deployment/<agent> --tail=30 was run and failure reason was reported. If health passed, this assertion is N/A (auto-pass)."
+          }
+        ]
+      },
+      "step-3-langflow": {
+        "description": "Step 3-langflow: Configure flow-based agents (Langflow)",
+        "assertions": [
+          {
+            "id": "langflow-route-discovered",
+            "type": "eval",
+            "description": "Langflow route discovered in the agent's namespace",
+            "pass_if": "oc get route langflow -n <langflow-namespace> returned a valid host. If no route found, the agent was skipped with a warning."
+          },
+          {
+            "id": "flow-discovered",
+            "type": "eval",
+            "description": "Flow discovered via Langflow API",
+            "pass_if": "GET /api/v1/flows/ returned at least one flow. The flow ID was captured for subsequent operations. If no flows found, the operator was offered to import the flow JSON."
+          },
+          {
+            "id": "model-endpoint-patched",
+            "type": "eval",
+            "description": "KServe vLLM component updated with cluster model endpoint",
+            "pass_if": "The flow's KServe/vLLM node was patched via PATCH /api/v1/flows/{flow_id} with the correct BASE_URL (internal service URL) and MODEL_ID from Step 2. The update was verified by re-fetching the flow."
+          },
+          {
+            "id": "langflow-test-request",
+            "type": "eval",
+            "description": "Test request to the flow returned a valid response",
+            "pass_if": "POST /api/v1/run/{flow_id} with a test input returned HTTP 200 and a chat response. No 'Error building Component' or HTTP 500."
           }
         ]
       },
