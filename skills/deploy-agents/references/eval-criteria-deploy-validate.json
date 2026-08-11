@@ -159,6 +159,13 @@
             "description": ".env file is NOT staged for git commit"
           },
           {
+            "id": "env-has-per-agent-experiment",
+            "type": "exec",
+            "command": "grep -qE 'MLFLOW_EXPERIMENT_NAME=[^/]+/.+' agents/${AGENT_PATH}/.env",
+            "on_fail": "block",
+            "description": "MLFLOW_EXPERIMENT_NAME uses per-agent pattern <namespace>/<deployment-name>"
+          },
+          {
             "id": "rag-vector-store-ready",
             "type": "eval",
             "description": "RAG agents have VECTOR_STORE_ID set before deployment",
@@ -315,6 +322,12 @@
             "type": "eval",
             "description": "Agent health endpoint returns OK after rollout",
             "pass_if": "curl -sk https://<route>/health returns HTTP 200 after the rollout completed"
+          },
+          {
+            "id": "experiment-name-in-logs",
+            "type": "eval",
+            "description": "Startup logs confirm per-agent experiment name",
+            "pass_if": "Agent startup logs show the experiment name matching the <namespace>/<deployment-name> pattern. The experiment name in the log matches what was set in the agent's .env file."
           },
           {
             "id": "tracing-vs-health-note",

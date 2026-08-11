@@ -85,7 +85,7 @@ From the **first standard agent deployment found**, extract:
 | `VECTOR_STORE_ID` | env var from deployment spec (if present — required by RAG agents at runtime) |
 | Container image registry prefix | from deployment image spec (e.g., `quay.io/adonheis/`) |
 
-**Do NOT extract `MLFLOW_EXPERIMENT_NAME` from shared config.** Each agent MUST have its own unique experiment name to prevent MLflow trace cross-contamination (see RHAIENG-6743). The experiment name is generated per-agent in Step 3d.
+**Do NOT extract `MLFLOW_EXPERIMENT_NAME` from shared config.** Each agent MUST have its own unique experiment name to prevent MLflow trace cross-contamination (see RHAIENG-6743). The experiment name is generated per-agent in Step 3d (Write .env file).
 
 **Security**: Never log, display, or include `API_KEY` or `MLFLOW_TRACKING_TOKEN` values in output. These are sensitive credentials — extract them silently and write them only to `.env` files (which are gitignored).
 
@@ -125,7 +125,7 @@ podman manifest inspect <registry>/<image>:<tag> 2>/dev/null || skopeo inspect d
 ### 3d: Write .env file
 Write the `.env` file in the agent directory with:
 - All auto-detected config from Step 2
-- `MLFLOW_EXPERIMENT_NAME=<namespace>/<deployment-name>` — each agent MUST have a **unique** experiment name to prevent MLflow trace cross-contamination across agents sharing the same namespace. Use the pattern `<namespace>/<deployment-name>` (e.g., `adonheis-testing/langgraph-react-agent`). Never reuse a single experiment name for multiple agents (RHAIENG-6743).
+- `MLFLOW_EXPERIMENT_NAME=<namespace>/<deployment-name>` — each agent MUST have a **unique** experiment name to prevent MLflow trace cross-contamination across agents sharing the same namespace. Use the pattern `<namespace>/<deployment-name>`, where `<deployment-name>` is the Kubernetes deployment name (from `metadata.name` in the Helm-generated Deployment resource, which matches the agent directory name). Example: `adonheis-testing/langgraph-react-agent`. Never reuse a single experiment name for multiple agents (RHAIENG-6743).
 - Fresh `MLFLOW_TRACKING_TOKEN` from `oc whoami -t`
 - `MLFLOW_WORKSPACE` set to the current namespace (`oc project -q`) — **mandatory for OpenShift MLflow**, without it the MLflow API returns "Workspace context is required"
 - `MLFLOW_TRACKING_INSECURE_TLS=true` (required when the cluster does not use trusted certificates)
