@@ -7,8 +7,8 @@ argument-hint: "<agent_paths or 'all'> [--token-only]"
 # Deploy Agents to OpenShift
 
 > **Usage:**
-> - `/agentic-starter-kits-skills:deploy-agents crewai/websearch_agent` — deploy one agent
-> - `/agentic-starter-kits-skills:deploy-agents crewai/websearch_agent langgraph/react_agent` — deploy multiple
+> - `/agentic-starter-kits-skills:deploy-agents crewai/templates/websearch_agent` — deploy one agent
+> - `/agentic-starter-kits-skills:deploy-agents crewai/templates/websearch_agent langgraph/templates/react_agent` — deploy multiple
 > - `/agentic-starter-kits-skills:deploy-agents all` — deploy all standard agents
 > - `/agentic-starter-kits-skills:deploy-agents --token-only` — only refresh MLflow tokens, no deployment
 
@@ -19,7 +19,7 @@ You are deploying agents to the agentic-mcp OpenShift cluster. This skill automa
 Arguments: $ARGUMENTS
 
 Parse the arguments to determine:
-- **Target agents**: space-separated paths relative to `agents/` (e.g., `crewai/websearch_agent`), or `all`
+- **Target agents**: space-separated paths relative to `agents/` (e.g., `crewai/templates/websearch_agent`), or `all`
 - **Token-only mode**: if `--token-only` is present, skip Steps 1–3 and go directly to Step 4
 
 If no arguments are provided, ask the user what to deploy.
@@ -41,25 +41,79 @@ If deploying (not `--token-only`), also check for a container CLI:
 podman version 2>/dev/null || docker version 2>/dev/null
 ```
 
+If the container CLI is podman, verify the podman machine is running:
+```bash
+podman machine list --format '{{.Name}}'   # check if any machine exists
+```
+If no machine is listed, warn the user: "No podman machine found. Run `podman machine init` to create one before deploying."
+
+If a machine exists, check whether it's running:
+```bash
+podman info >/dev/null 2>&1
+```
+If `podman info` fails, warn the user: "Podman machine exists but is not running. Start it with `podman machine start` before deploying." Do **not** auto-start the machine — the user may have stopped it intentionally.
+
+**Podman/Docker fallback**: The agent Makefiles auto-detect the container CLI via `command -v podman || command -v docker`. If podman is installed but not running, the Makefile picks podman and fails. When Docker is available as a fallback, pass `CONTAINER_CLI=docker` to all `make build`, `make push`, and `make deploy` commands (e.g., `make build CONTAINER_CLI=docker`). Store whichever CLI is working and use it consistently.
+
 Store the namespace from `oc project -q` — use explicit `-n <namespace>` on every `oc` command for the rest of this workflow. Never rely on the default context.
+
+### 0a: Verify MLflow infrastructure
+
+Check whether the MLflow operator CRD exists (indicates RHOAI 3.5+):
+```bash
+oc get crd mlflowoperators.components.platform.opendatahub.io 2>/dev/null
+```
+
+**If the CRD exists (RHOAI 3.5+)**:
+
+1. Verify the MLflow operator is enabled in the DataScienceCluster:
+```bash
+oc get datasciencecluster -o json | jq '.items | length'
+```
+If the count is 0, warn the user: "No DataScienceCluster found — RHOAI may not be installed correctly." If the count is greater than 1, warn: "Multiple DataScienceClusters found — checking the first one, but this is unexpected."
+
+Then check the operator state:
+```bash
+oc get datasciencecluster -o json | jq '.items[0].spec.components.mlflowoperator.managementState'
+```
+If it returns `"Removed"`, the MLflow tracking server is **not deployed** — all tracing will fail. Warn the user that `mlflowoperator` must be set to `Managed` in the DataScienceCluster CR before agents can trace.
+
+2. Verify the MLflow pod is running:
+```bash
+oc get pods -n redhat-ods-applications -l app=mlflow --no-headers 2>/dev/null | grep -c Running
+```
+If this returns 0, the MLflow tracking server is **not running** — all tracing will fail. Warn the user that the MLflow pod must be running before agents can trace. Check if `mlflowoperator` is set to `Managed` (see check above) and whether the pod is in a non-Running state (CrashLoopBackOff, Pending, etc.).
+
+3. Verify the namespace has the required workspace label. RHOAI 3.5+ requires namespaces to opt in to MLflow tracking via a label. Without it, agents get `RESOURCE_DOES_NOT_EXIST: Workspace '<namespace>' not found ... matches the configured selector ('mlflow-tracking in (enabled)')`.
+```bash
+oc get namespace <namespace> -o jsonpath='{.metadata.labels.mlflow-tracking}'
+```
+If the label is missing or not set to `enabled`, apply it:
+```bash
+oc label namespace <namespace> mlflow-tracking=enabled
+```
+
+**If the CRD does not exist (RHOAI < 3.5)**: Skip these checks — the standalone MLflow service is managed differently in older versions and does not require namespace labeling.
+
+> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-0a-mlflow-infra` — consult eval-criteria. Verify MLflow infrastructure is ready.
 
 ## Step 1: Resolve Target Agents
 
 If argument is `all`:
-1. List all directories under `agents/` that contain both `agent.yaml` and a `Makefile`
+1. List all directories under `agents/` (structure: `agents/<framework>/templates/<agent>/`) that contain both `agent.yaml` and a `Makefile`
 2. Categorize each agent:
-   - **Standard agents**: `values.yaml` references `charts/agent/` (Helm-deployed) → use Steps 3a-3g
-   - **Flow-based agents**: `agent.yaml` has `deploymentModel: flow-import` (e.g., `langflow/simple_tool_calling_agent`) → use Step 3-langflow
-3. **Skip with warning**: `a2a/langgraph_crewai_agent` (custom chart, no automated deployment support)
+   - **Standard agents**: Makefile references the shared Helm chart (`CHART_DIR` pointing to `../../deployment` or a `helm upgrade` command) → use Steps 3a-3g
+   - **Flow-based agents**: `agent.yaml` has `deploymentModel: flow-import` (e.g., `langflow/templates/simple_tool_calling_agent`) → use Step 3-langflow
+3. **Skip with warning**: agents that are neither standard nor flow-based (no Helm chart and no `deploymentModel: flow-import`)
 
 If specific paths given:
-1. For each path, verify `agents/<path>/agent.yaml` exists
+1. For each path, verify `agents/<path>/agent.yaml` exists (paths can be either `<framework>/<agent>` or `<framework>/templates/<agent>` — resolve both)
 2. Check `deploymentModel` in `agent.yaml` — if `flow-import`, route to Step 3-langflow
 3. Warn and skip agents that are neither standard nor flow-based
 
 Report the final list of agents to deploy (with their deployment type) before proceeding.
 
-> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories, agent.yaml, Makefile exist; unsupported non-standard agents (a2a) excluded; flow-based agents (langflow) categorized for Step 3-langflow.
+> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories (`agents/<framework>/templates/<agent>/`), agent.yaml, Makefile exist; non-standard agents excluded; flow-based agents (langflow) categorized for Step 3-langflow.
 
 ## Step 2: Auto-Detect Cluster Config
 
@@ -207,15 +261,17 @@ curl -sk --compressed -X POST "https://<langflow-route>/api/v1/run/<flow_id>" \
 If building:
 ```bash
 cd agents/<path>
-make build
-make push
+make build CONTAINER_CLI=<container-cli>
+make push CONTAINER_CLI=<container-cli>
 ```
 
 ### 3f: Deploy via Helm
 ```bash
 cd agents/<path>
-make deploy
+make deploy CONTAINER_CLI=<container-cli>
 ```
+
+Where `<container-cli>` is the working container CLI determined in Step 0 (e.g., `docker` or `podman`).
 
 ### 3g: Verify health
 Wait a few seconds for the pod to start, then:
@@ -257,10 +313,19 @@ oc get secrets -n <namespace> -o json | jq -r '.items[] | select(.data["mlflow-t
 ```
 
 ### 4c: Patch each secret
-For each secret found:
+
+**Warning — Helm field ownership**: `oc patch secret` takes field ownership of `.data.mlflow-tracking-token` away from Helm. This causes subsequent `make deploy` (which uses `helm upgrade --install` with server-side apply) to fail with: `conflict with "kubectl-patch" using v1: .data.mlflow-tracking-token`.
+
+For each secret found, update the token while preserving Helm's field ownership:
 ```bash
-oc patch secret <secret-name> -n <namespace> -p "{\"data\":{\"mlflow-tracking-token\":\"$TOKEN_B64\"}}"
+oc get secret <secret-name> -n <namespace> -o json \
+  | jq ".data[\"mlflow-tracking-token\"]=\"$TOKEN_B64\"" \
+  | oc apply --server-side --force-conflicts --field-manager=helm -f -
 ```
+
+This uses server-side apply with `--field-manager=helm` so Helm retains ownership and future `make deploy` won't conflict. This intentionally impersonates Helm's field manager identity — using a different manager name would re-introduce the conflict. The trade-off is that field ownership audit trails will attribute this change to Helm rather than the skill.
+
+**If you already have a conflict** from a previous `oc patch`: delete the secret (`oc delete secret <secret-name>`) and run `helm uninstall <release>` followed by `make deploy` to do a clean install that restores Helm's field ownership.
 
 ### 4d: Restart deployments
 For each agent whose token was refreshed:
@@ -317,6 +382,17 @@ oc logs deployment/<agent-name> -n <namespace> 2>&1 | grep -E "\[Tracing\]|ERROR
 ```
 This `JSONDecodeError` means the MLflow API returned a non-JSON response (usually a 302 OAuth redirect because the token is expired/invalid).
 
+Also check for these RHOAI 3.5+ error patterns:
+```
+RESOURCE_DOES_NOT_EXIST: Workspace '<namespace>' not found ... matches the configured selector ('mlflow-tracking in (enabled)')
+```
+Fix: the namespace needs the `mlflow-tracking=enabled` label — see Step 0a.
+
+```
+401 {"error_code":"UNAUTHENTICATED","message":"Authentication to the MLflow tracking server failed..."}
+```
+Fix: the MLflow operator is not deployed or the tracking server is not running — see Step 0a.
+
 To confirm, test the token directly against the MLflow API:
 ```bash
 TOKEN=$(oc get secret <agent-name>-secret -n <namespace> -o jsonpath='{.data.mlflow-tracking-token}' | base64 -d)
@@ -335,13 +411,13 @@ Verify health as in Step 3g. Remember that `/health` returns `200 OK` even when 
 Print a summary table:
 
 ```
-Agent                          | Status      | Route                                    | Health | Token
--------------------------------|-------------|------------------------------------------|--------|--------
-crewai/websearch_agent         | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
-langgraph/react_agent          | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
-langgraph/hitl_agent           | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
-langflow/tool_calling_agent    | configured  | langflow-langflow-agent.apps.xxx         | OK     | n/a (Langfuse)
-autogen/chat_agent             | failed      | —                                        | —      | —
+Agent                                              | Status      | Route                                    | Health | Token
+---------------------------------------------------|-------------|------------------------------------------|--------|--------
+crewai/templates/websearch_agent                   | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
+langgraph/templates/react_agent                    | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
+langgraph/templates/human_in_the_loop              | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
+langflow/templates/simple_tool_calling_agent       | configured  | langflow-langflow-agent.apps.xxx         | OK     | n/a (Langfuse)
+autogen/templates/mcp_agent                        | failed      | —                                        | —      | —
 ```
 
 If any agents failed, show the failure reason and suggest next steps.
@@ -432,6 +508,30 @@ Common error patterns:
 
 **Cause**: The `MLFLOW_TRACKING_TOKEN` is expired or invalid. The MLflow API returns a 302 redirect instead of JSON. See Step 4f for full diagnosis (including direct `curl` test) and Step 4a-4d for the fix. If the deployment has a hardcoded token instead of `secretKeyRef`, see Step 4e.
 
+### Symptom: `RESOURCE_DOES_NOT_EXIST: Workspace '<namespace>' not found`
+
+**Cause** (RHOAI 3.5+): The namespace is missing the `mlflow-tracking=enabled` label. MLflow workspaces map 1:1 to namespaces, and only namespaces with this label are recognized. See Step 0a for the fix.
+
+### Symptom: `401 UNAUTHENTICATED` with message about `MLFLOW_TRACKING_AUTH=kubernetes-namespaced`
+
+**Cause** (RHOAI 3.5+): The MLflow operator is not deployed, or the MLflow tracking server is not running. The external route serves the RHOAI dashboard frontend (HTML) instead of the MLflow API. Check:
+1. `oc get datasciencecluster -o json | jq '.items[0].spec.components.mlflowoperator'` — must be `Managed`, not `Removed`
+2. `oc get pods -n redhat-ods-applications | grep mlflow` — MLflow pod must exist and be Running
+3. If `mlflowoperator` is `Removed`, it needs to be enabled in the DataScienceCluster CR
+
+### Symptom: `make deploy` fails with `conflict with "kubectl-patch"`
+
+**Cause**: A previous `oc patch secret` command took field ownership of `.data.mlflow-tracking-token` away from Helm. Helm's server-side apply refuses to overwrite fields owned by another manager.
+
+**Fix**: Delete the conflicting secret and Helm release, then reinstall:
+```bash
+oc delete secret <agent-name>-secret -n <namespace>
+helm uninstall <agent-name> -n <namespace>
+make deploy   # clean install restores Helm field ownership
+```
+
+See Step 4c for the correct patching approach that avoids this conflict.
+
 ### Symptom: Secret patched but agent still uses old token
 
 **Cause**: The deployment's `MLFLOW_TRACKING_TOKEN` env var is a hardcoded `value` instead of a `valueFrom.secretKeyRef`. See Step 4e for full diagnosis and fix.
@@ -448,7 +548,7 @@ Common error patterns:
 ## Key Constraints
 
 - **Namespace isolation**: All `oc` commands use explicit `-n <namespace>`. Never touch resources outside the current namespace.
-- **No chart modifications**: Never modify `charts/agent/` templates.
+- **No chart modifications**: Never modify the shared Helm chart in `agents/<framework>/deployment/` templates.
 - **No .env commits**: `.env` files are written but never staged or committed.
 - **Token refresh is comprehensive**: Step 4 covers ALL agents in the namespace, not just targets.
 - **Ask before destructive actions**: Always confirm before redeploying an existing agent or rebuilding an image.

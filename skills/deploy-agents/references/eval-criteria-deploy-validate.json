@@ -39,6 +39,13 @@
           "description": "Container CLI available (podman or docker) -- required unless --token-only"
         },
         {
+          "id": "container-cli-connected",
+          "type": "eval",
+          "on_fail": "warn",
+          "description": "The chosen container CLI is connected and ready -- if podman was selected, podman machine must be running; if docker was selected, docker daemon must be up. Required unless --token-only.",
+          "pass_if": "The skill tested readiness of the specific container CLI it chose (podman info or docker info), not just any available CLI. If podman is the chosen CLI, a running podman machine was confirmed."
+        },
+        {
           "id": "args-provided",
           "type": "eval",
           "description": "Skill arguments specify target agents or a mode flag",
@@ -53,6 +60,35 @@
       ]
     },
     "gates": {
+      "step-0a-mlflow-infra": {
+        "description": "Step 0a: MLflow infrastructure verified (RHOAI 3.5+ only)",
+        "assertions": [
+          {
+            "id": "rhoai-version-detected",
+            "type": "eval",
+            "description": "RHOAI version was detected via CRD presence check",
+            "pass_if": "The skill checked for the mlflowoperators CRD to determine if this is RHOAI 3.5+ or an older version. If the CRD does not exist, remaining assertions in this gate are N/A (auto-pass)."
+          },
+          {
+            "id": "mlflow-operator-managed",
+            "type": "eval",
+            "description": "MLflow operator is Managed in DataScienceCluster (RHOAI 3.5+ only)",
+            "pass_if": "mlflowoperator.managementState is 'Managed' in the DSC spec. If it is 'Removed', the user was warned that MLflow must be enabled before tracing can work. If RHOAI < 3.5, this is N/A (auto-pass)."
+          },
+          {
+            "id": "mlflow-pod-running",
+            "type": "eval",
+            "description": "MLflow pod is running in redhat-ods-applications (RHOAI 3.5+ only)",
+            "pass_if": "At least one MLflow pod is Running in redhat-ods-applications namespace. If RHOAI < 3.5, this is N/A (auto-pass)."
+          },
+          {
+            "id": "namespace-mlflow-label",
+            "type": "eval",
+            "description": "Namespace has mlflow-tracking=enabled label (RHOAI 3.5+ only)",
+            "pass_if": "The target namespace has the label mlflow-tracking=enabled. If it was missing, it was applied via oc label. If RHOAI < 3.5, this is N/A (auto-pass)."
+          }
+        ]
+      },
       "step-1-resolve": {
         "description": "Step 1: Target agents resolved and validated",
         "assertions": [
@@ -80,8 +116,8 @@
           {
             "id": "nonstandard-excluded",
             "type": "eval",
-            "description": "Unsupported non-standard agents excluded from target list",
-            "pass_if": "a2a/langgraph_crewai_agent is NOT in the resolved target list. If 'all' was specified, it was filtered out with a warning. langflow/simple_tool_calling_agent IS included but categorized as flow-based (routed to Step 3-langflow, not Steps 3a-3g)."
+            "description": "Non-standard agents excluded or categorized correctly",
+            "pass_if": "Agents without a Helm chart or flow-import deploymentModel are NOT in the resolved target list. If 'all' was specified, they were filtered out with a warning. langflow/templates/simple_tool_calling_agent IS included but categorized as flow-based (routed to Step 3-langflow, not Steps 3a-3g)."
           },
           {
             "id": "target-list-reported",
@@ -262,8 +298,8 @@
           {
             "id": "secrets-patched",
             "type": "eval",
-            "description": "Each secret was patched with the fresh token",
-            "pass_if": "oc patch secret was executed for every discovered MLflow token secret with the base64-encoded fresh token"
+            "description": "Each secret was patched with the fresh token using Helm-compatible method",
+            "pass_if": "Each MLflow token secret was updated with the fresh base64-encoded token using 'oc apply --server-side --force-conflicts --field-manager=helm' (NOT 'oc patch secret', which breaks Helm field ownership). Alternatively, if a conflict already existed, the secret was deleted and the release reinstalled via helm uninstall + make deploy."
           },
           {
             "id": "rollouts-restarted",
@@ -316,6 +352,18 @@
             "type": "eval",
             "description": "No JSONDecodeError in agent startup logs (expired token symptom)",
             "pass_if": "Agent logs do NOT contain 'Expecting value: line 1 column 1 (char 0)' which indicates the MLflow API returned a 302 OAuth redirect instead of JSON"
+          },
+          {
+            "id": "no-workspace-not-found",
+            "type": "eval",
+            "description": "No workspace-not-found error in agent logs (RHOAI 3.5+ missing label)",
+            "pass_if": "Agent logs do NOT contain 'RESOURCE_DOES_NOT_EXIST: Workspace' which indicates the namespace is missing the mlflow-tracking=enabled label (RHOAI 3.5+). If this error appears, see Step 0a."
+          },
+          {
+            "id": "no-unauthenticated-error",
+            "type": "eval",
+            "description": "No UNAUTHENTICATED error in agent logs (RHOAI 3.5+ MLflow not deployed)",
+            "pass_if": "Agent logs do NOT contain 'UNAUTHENTICATED' with a message about 'MLFLOW_TRACKING_AUTH=kubernetes-namespaced', which indicates the MLflow operator is not running (RHOAI 3.5+). If this error appears, see Step 0a."
           },
           {
             "id": "health-after-restart",
@@ -405,9 +453,9 @@
         {
           "id": "no-chart-modifications",
           "type": "exec",
-          "command": "! git diff --name-only | grep -q 'charts/agent/'",
+          "command": "! git diff --name-only | grep -qE 'agents/.*/deployment/(templates|Chart\\.yaml|values\\.yaml)'",
           "on_fail": "block",
-          "description": "charts/agent/ templates were not modified"
+          "description": "Shared Helm chart in agents/<framework>/deployment/ was not modified"
         },
         {
           "id": "namespace-consistent",
