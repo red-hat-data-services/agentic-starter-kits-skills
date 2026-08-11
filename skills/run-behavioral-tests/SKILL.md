@@ -67,7 +67,7 @@ Verify ALL of the following:
 10. **Shared conftest**: `tests/behavioral/conftest.py` `_AGENT_URL_MAP` includes the agent marker (Phase 5 complete)
 11. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
 12. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
-13. **MLFLOW_EXPERIMENT_NAME**: Set to a meaningful experiment name
+13. **MLFLOW_EXPERIMENT_NAME**: Set to the agent's **per-agent** experiment name (e.g., `<namespace>/<deployment-name>`). Each agent MUST have a unique experiment name — a shared name causes trace cross-contamination (RHAIENG-6743). The `run-btests-pytest.sh` script auto-detects per-agent experiment names from each deployment.
 14. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
 15. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
 16. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`, `GOOGLE_ADK_AGENT_URL`) is set and points to the deployed OpenShift route
@@ -103,7 +103,7 @@ uv run --extra test --extra test-mlflow pytest agents/<framework>/<agent_name>/t
 # Run against live agent with MLflow enabled (ALL six env vars required for OpenShift MLflow)
 <AGENT_ENV_VAR>=https://<route> \
 MLFLOW_TRACKING_URI=<uri> \
-MLFLOW_EXPERIMENT_NAME=<experiment> \
+MLFLOW_EXPERIMENT_NAME=<namespace>/<deployment-name> \
 MLFLOW_TRACKING_TOKEN=$(oc whoami -t) \
 MLFLOW_WORKSPACE=<namespace> \
 MLFLOW_TRACKING_INSECURE_TLS=true \

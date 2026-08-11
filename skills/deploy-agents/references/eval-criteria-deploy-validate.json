@@ -116,8 +116,8 @@
           {
             "id": "nonstandard-excluded",
             "type": "eval",
-            "description": "Non-standard agents excluded from target list",
-            "pass_if": "langflow/templates/simple_tool_calling_agent (docker-compose based, no Helm chart) is NOT in the resolved target list. If 'all' was specified, it was filtered out with a warning."
+            "description": "Non-standard agents excluded or categorized correctly",
+            "pass_if": "Agents without a Helm chart or flow-import deploymentModel are NOT in the resolved target list. If 'all' was specified, they were filtered out with a warning. langflow/templates/simple_tool_calling_agent IS included but categorized as flow-based (routed to Step 3-langflow, not Steps 3a-3g)."
           },
           {
             "id": "target-list-reported",
@@ -147,7 +147,7 @@
             "id": "config-extracted",
             "type": "eval",
             "description": "Required config values were extracted or prompted",
-            "pass_if": "BASE_URL, MODEL_ID, API_KEY, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME, MLFLOW_WORKSPACE, container registry prefix were all resolved -- either auto-detected from an existing deployment or explicitly requested from the user"
+            "pass_if": "BASE_URL, MODEL_ID, API_KEY, MLFLOW_TRACKING_URI, MLFLOW_WORKSPACE, container registry prefix were all resolved -- either auto-detected from an existing deployment or explicitly requested from the user. EMBEDDING_MODEL, EMBEDDING_DIMENSION, VECTOR_STORE_PROVIDER are extracted if present (used by RAG agents). MLFLOW_EXPERIMENT_NAME is NOT auto-detected here -- it is generated per-agent in Step 3d as <namespace>/<deployment-name>"
           },
           {
             "id": "secrets-not-logged",
@@ -195,6 +195,19 @@
             "description": ".env file is NOT staged for git commit"
           },
           {
+            "id": "env-has-per-agent-experiment",
+            "type": "exec",
+            "command": "grep -qE 'MLFLOW_EXPERIMENT_NAME=[^/]+/.+' agents/${AGENT_PATH}/.env",
+            "on_fail": "block",
+            "description": "MLFLOW_EXPERIMENT_NAME uses per-agent pattern <namespace>/<deployment-name>"
+          },
+          {
+            "id": "rag-vector-store-ready",
+            "type": "eval",
+            "description": "RAG agents have VECTOR_STORE_ID set before deployment",
+            "pass_if": "For agents with the 'rag' label in agent.yaml: VECTOR_STORE_ID was either auto-detected from an existing deployment or created by running make load-docs (Step 3d-rag). The .env file contains a non-empty VECTOR_STORE_ID before make deploy runs. Non-RAG agents skip this check."
+          },
+          {
             "id": "make-deploy-ran",
             "type": "eval",
             "description": "make deploy executed successfully for the agent",
@@ -234,6 +247,35 @@
             "type": "eval",
             "description": "If health failed, pod logs were checked for diagnosis",
             "pass_if": "If health check failed: oc logs deployment/<agent> --tail=30 was run and failure reason was reported. If health passed, this assertion is N/A (auto-pass)."
+          }
+        ]
+      },
+      "step-3-langflow": {
+        "description": "Step 3-langflow: Configure flow-based agents (Langflow)",
+        "assertions": [
+          {
+            "id": "langflow-route-discovered",
+            "type": "eval",
+            "description": "Langflow route discovered in the agent's namespace",
+            "pass_if": "oc get route langflow -n <langflow-namespace> returned a valid host. If no route found, the agent was skipped with a warning."
+          },
+          {
+            "id": "flow-discovered",
+            "type": "eval",
+            "description": "Flow discovered via Langflow API",
+            "pass_if": "GET /api/v1/flows/ returned at least one flow. The flow ID was captured for subsequent operations. If no flows found, the operator was offered to import the flow JSON."
+          },
+          {
+            "id": "model-endpoint-patched",
+            "type": "eval",
+            "description": "KServe vLLM component updated with cluster model endpoint",
+            "pass_if": "The flow's KServe/vLLM node was patched via PATCH /api/v1/flows/{flow_id} with the correct BASE_URL (internal service URL) and MODEL_ID from Step 2. The update was verified by re-fetching the flow."
+          },
+          {
+            "id": "langflow-test-request",
+            "type": "eval",
+            "description": "Test request to the flow returned a valid response",
+            "pass_if": "POST /api/v1/run/{flow_id} with a test input returned HTTP 200 and a chat response. No 'Error building Component' or HTTP 500."
           }
         ]
       },
@@ -328,6 +370,12 @@
             "type": "eval",
             "description": "Agent health endpoint returns OK after rollout",
             "pass_if": "curl -sk https://<route>/health returns HTTP 200 after the rollout completed"
+          },
+          {
+            "id": "experiment-name-in-logs",
+            "type": "eval",
+            "description": "Startup logs confirm per-agent experiment name",
+            "pass_if": "Agent startup logs show the experiment name matching the <namespace>/<deployment-name> pattern. The experiment name in the log matches what was set in the agent's .env file."
           },
           {
             "id": "tracing-vs-health-note",

@@ -101,16 +101,19 @@ oc label namespace <namespace> mlflow-tracking=enabled
 
 If argument is `all`:
 1. List all directories under `agents/` (structure: `agents/<framework>/templates/<agent>/`) that contain both `agent.yaml` and a `Makefile`
-2. Filter to only standard agents: those whose Makefile references the shared Helm chart (check for `CHART_DIR` pointing to `../../deployment` or a `helm upgrade` command)
-3. **Skip with warning**: `langflow/templates/simple_tool_calling_agent` (docker-compose based, uses `COMPOSE_FILE` instead of Helm)
+2. Categorize each agent:
+   - **Standard agents**: Makefile references the shared Helm chart (`CHART_DIR` pointing to `../../deployment` or a `helm upgrade` command) → use Steps 3a-3g
+   - **Flow-based agents**: `agent.yaml` has `deploymentModel: flow-import` (e.g., `langflow/templates/simple_tool_calling_agent`) → use Step 3-langflow
+3. **Skip with warning**: agents that are neither standard nor flow-based (no Helm chart and no `deploymentModel: flow-import`)
 
 If specific paths given:
 1. For each path, verify `agents/<path>/agent.yaml` exists (paths can be either `<framework>/<agent>` or `<framework>/templates/<agent>` — resolve both)
-2. Warn and skip any non-standard agents (those without a `helm upgrade` in their Makefile)
+2. Check `deploymentModel` in `agent.yaml` — if `flow-import`, route to Step 3-langflow
+3. Warn and skip agents that are neither standard nor flow-based
 
-Report the final list of agents to deploy before proceeding.
+Report the final list of agents to deploy (with their deployment type) before proceeding.
 
-> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories (`agents/<framework>/templates/<agent>/`), agent.yaml, Makefile exist; non-standard agents (docker-compose based) excluded.
+> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-1-resolve` — consult eval-criteria. Verify agent directories (`agents/<framework>/templates/<agent>/`), agent.yaml, Makefile exist; non-standard agents excluded; flow-based agents (langflow) categorized for Step 3-langflow.
 
 ## Step 2: Auto-Detect Cluster Config
 
@@ -128,10 +131,15 @@ From the **first standard agent deployment found**, extract:
 | `MODEL_ID` | env var from deployment spec |
 | `API_KEY` | from the deployment's referenced secret (base64-decode) |
 | `MLFLOW_TRACKING_URI` | env var from deployment spec |
-| `MLFLOW_EXPERIMENT_NAME` | env var from deployment spec |
 | `MLFLOW_TRACKING_INSECURE_TLS` | env var from deployment spec |
 | `MLFLOW_WORKSPACE` | env var from deployment spec |
+| `EMBEDDING_MODEL` | env var from deployment spec (if present — used by RAG agents) |
+| `EMBEDDING_DIMENSION` | env var from deployment spec (if present — used by RAG agents) |
+| `VECTOR_STORE_PROVIDER` | env var from deployment spec (if present — used by RAG agents) |
+| `VECTOR_STORE_ID` | env var from deployment spec (if present — required by RAG agents at runtime) |
 | Container image registry prefix | from deployment image spec (e.g., `quay.io/adonheis/`) |
+
+**Do NOT extract `MLFLOW_EXPERIMENT_NAME` from shared config.** Each agent MUST have its own unique experiment name to prevent MLflow trace cross-contamination (see RHAIENG-6743). The experiment name is generated per-agent in Step 3d (Write .env file).
 
 **Security**: Never log, display, or include `API_KEY` or `MLFLOW_TRACKING_TOKEN` values in output. These are sensitive credentials — extract them silently and write them only to `.env` files (which are gitignored).
 
@@ -151,8 +159,13 @@ If it already exists, ask the user whether to redeploy or skip.
 
 ### 3b: Read agent requirements
 Read `agent.yaml` in the agent directory to discover required env vars. For agents with extra requirements beyond the standard set (e.g., `POSTGRES_*` for db-memory agents, `MCP_SERVER_URL` for autogen agents):
-- Try to auto-detect from an existing deployment of the same agent
+- Use shared config from Step 2 first (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `VECTOR_STORE_PROVIDER` are commonly shared across RAG agents in the same namespace)
+- Try to auto-detect remaining values from an existing deployment of the same agent
 - If not found, ask the user
+
+**RAG agents** (labels include `rag` in `agent.yaml`) have additional requirements:
+- `VECTOR_STORE_ID` — **required at runtime**. Without it the agent crashes: `"VECTOR_STORE_ID env var is not set"`. Auto-detect from an existing deployment's env vars. If not found, documents must be loaded first (see Step 3d-rag below).
+- `DOCS_TO_LOAD` — path to the knowledge base file (defaults to `./data/sample_knowledge.txt`). Only needed if creating a new vector store.
 
 ### 3c: Check container image
 Check if the container image already exists in the registry:
@@ -166,6 +179,7 @@ podman manifest inspect <registry>/<image>:<tag> 2>/dev/null || skopeo inspect d
 ### 3d: Write .env file
 Write the `.env` file in the agent directory with:
 - All auto-detected config from Step 2
+- `MLFLOW_EXPERIMENT_NAME=<namespace>/<deployment-name>` — each agent MUST have a **unique** experiment name to prevent MLflow trace cross-contamination across agents sharing the same namespace. Use the pattern `<namespace>/<deployment-name>`, where `<deployment-name>` is the Kubernetes deployment name (from `metadata.name` in the Helm-generated Deployment resource, which matches the agent directory name). Example: `adonheis-testing/langgraph-react-agent`. Never reuse a single experiment name for multiple agents (RHAIENG-6743).
 - Fresh `MLFLOW_TRACKING_TOKEN` from `oc whoami -t`
 - `MLFLOW_WORKSPACE` set to the current namespace (`oc project -q`) — **mandatory for OpenShift MLflow**, without it the MLflow API returns "Workspace context is required"
 - `MLFLOW_TRACKING_INSECURE_TLS=true` (required when the cluster does not use trusted certificates)
@@ -173,6 +187,75 @@ Write the `.env` file in the agent directory with:
 - Any agent-specific extra vars from Step 3b
 
 **Never commit .env files** — they are already in `.gitignore`.
+
+### 3d-rag: Load documents into vector store (RAG agents only)
+
+If the agent has the `rag` label in `agent.yaml` and `VECTOR_STORE_ID` is **not set** (no existing vector store found in Step 3b):
+
+1. Run `make load-docs` from the agent directory — this executes `data/load_documents.py` which:
+   - Creates a new vector store via OGX using `VECTOR_STORE_PROVIDER` and `EMBEDDING_MODEL`
+   - Chunks and embeds documents from `DOCS_TO_LOAD`
+   - Writes the new `VECTOR_STORE_ID` back into the agent's `.env` file
+2. After `load_documents.py` completes, re-read the `.env` to pick up the generated `VECTOR_STORE_ID`
+3. The `VECTOR_STORE_ID` is now baked into the deployment — subsequent deploys auto-detect it from the existing deployment (Step 3b)
+
+If `VECTOR_STORE_ID` **is already set** (auto-detected from an existing deployment), skip this step — the vector store already has documents loaded.
+
+### 3-langflow: Configure flow-based agents
+
+For agents with `deploymentModel: flow-import` in `agent.yaml` (e.g., Langflow), **skip Steps 3a-3g entirely** and use this step instead. Flow-based agents run on a pre-deployed platform instance — there is no container to build or Helm chart to deploy. The skill's job is to configure the flow's model endpoint so it points at the cluster's actual LLM service.
+
+#### 3-langflow-a: Discover Langflow instance
+
+Flow-based agents run in their own namespace. Check `agent.yaml` for a `namespace` field, or default to `langflow-agent`:
+
+```bash
+oc get route langflow -n <langflow-namespace> -o jsonpath='{.spec.host}'
+```
+
+If no route is found, warn and skip — the Langflow platform is not deployed.
+
+#### 3-langflow-b: Discover flow
+
+List flows on the Langflow instance and match by name:
+
+```bash
+curl -sk --compressed "https://<langflow-route>/api/v1/flows/"
+```
+
+Parse the JSON response to find flows. If the expected flow exists, capture its `id`. If no flows are found, offer to import the flow JSON from the agent's `flows/*.json` directory via `POST /api/v1/flows/`.
+
+**Note**: Flow IDs are regenerated on each import — always discover by listing, never hardcode.
+
+#### 3-langflow-c: Patch model endpoint
+
+Using `BASE_URL` and `MODEL_ID` from Step 2 (same auto-detected values as standard agents), update the flow's LLM component:
+
+1. Fetch the flow: `GET /api/v1/flows/{flow_id}`
+2. Find the KServe/vLLM node in `data.nodes[]` — match on `data.type` containing `KServe` or `VLLM`
+3. Update the node's template values:
+   - `template.api_base.value` → `BASE_URL` (use the **internal** cluster service URL, not the external route)
+   - `template.model_name.value` → `MODEL_ID`
+   - `template.api_key.value` → `API_KEY` (or `EMPTY` if the internal endpoint requires no auth)
+4. Patch the flow: `PATCH /api/v1/flows/{flow_id}` with `{"data": <updated_flow_data>}`
+5. Verify by re-fetching the flow and confirming the values match
+
+**Important**: All `curl` calls to the Langflow API must use `--compressed` — the server returns gzip-encoded responses by default.
+
+#### 3-langflow-d: Verify with test request
+
+Send a test chat request to confirm the flow is functional:
+
+```bash
+curl -sk --compressed -X POST "https://<langflow-route>/api/v1/run/<flow_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"input_value": "Hello", "output_type": "chat", "input_type": "chat"}'
+```
+
+- **HTTP 200 with chat response**: Flow is working — report as "configured"
+- **HTTP 500 with "Error building Component"**: The model endpoint is unreachable or misconfigured — report the error and suggest checking the model service
+
+> **Gate**: `agentic-starter-kits-skills:deploy-agents.step-3-langflow` — consult eval-criteria. Verify Langflow route discovered, flow found, model endpoint patched, test request succeeded.
 
 ### 3e: Build and push (if needed)
 If building:
@@ -215,6 +298,8 @@ Report the result (healthy/unhealthy) and move to the next agent.
 ## Step 4: Refresh MLflow Tokens for ALL Deployed Agents
 
 This step **always runs** — even with `--token-only`, even if no agents were just deployed. It refreshes tokens for every agent in the namespace, not just the ones targeted in this run.
+
+**Flow-based agents (Langflow)** are skipped in Step 4 — they use Langfuse for tracing, not MLflow. They have no MLflow token secrets to refresh.
 
 ### 4a: Get fresh token
 ```bash
@@ -326,12 +411,13 @@ Verify health as in Step 3g. Remember that `/health` returns `200 OK` even when 
 Print a summary table:
 
 ```
-Agent                                    | Status      | Route                                    | Health | Token
------------------------------------------|-------------|------------------------------------------|--------|--------
-crewai/templates/websearch_agent         | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
-langgraph/templates/react_agent          | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
-langgraph/templates/human_in_the_loop    | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
-autogen/templates/mcp_agent              | failed      | —                                        | —      | —
+Agent                                              | Status      | Route                                    | Health | Token
+---------------------------------------------------|-------------|------------------------------------------|--------|--------
+crewai/templates/websearch_agent                   | deployed    | websearch-agent-agentic-mcp.apps.xxx     | OK     | refreshed
+langgraph/templates/react_agent                    | redeployed  | react-agent-agentic-mcp.apps.xxx         | OK     | refreshed
+langgraph/templates/human_in_the_loop              | skipped     | hitl-agent-agentic-mcp.apps.xxx          | OK     | refreshed
+langflow/templates/simple_tool_calling_agent       | configured  | langflow-langflow-agent.apps.xxx         | OK     | n/a (Langfuse)
+autogen/templates/mcp_agent                        | failed      | —                                        | —      | —
 ```
 
 If any agents failed, show the failure reason and suggest next steps.
