@@ -8,7 +8,7 @@ Claude Code skills for [agentic-starter-kits](https://github.com/red-hat-data-se
 |-------|-------------|-------|
 | fit-check | Validate whether a new agent belongs in the repo (idea mode or existing code) | `/agentic-starter-kits-skills:fit-check [agent_path]` |
 | deploy-agents | Deploy agents to OpenShift with auto-detected cluster config and MLflow token refresh | `/agentic-starter-kits-skills:deploy-agents <agent_paths or 'all'> [--token-only]` |
-| add-behavioral-tests | Scaffold behavioral testing (pytest + EvalHub) for an agent | `/agentic-starter-kits-skills:add-behavioral-tests <agent_path> [JIRA-KEY]` |
+| add-behavioral-tests | Scaffold behavioral testing (pytest) for an agent | `/agentic-starter-kits-skills:add-behavioral-tests <agent_path> [JIRA-KEY]` |
 | run-behavioral-tests | Run and validate behavioral tests for an agent | `/agentic-starter-kits-skills:run-behavioral-tests <agent_path>` |
 | add-integration-tests | Add integration tests for agent deployment verification | `/agentic-starter-kits-skills:add-integration-tests <agent_path> [JIRA-KEY]` |
 | integrate-tracing | Orchestrate end-to-end MLflow tracing integration into an agent template | `/agentic-starter-kits-skills:integrate-tracing <framework> <agent_path>` |
