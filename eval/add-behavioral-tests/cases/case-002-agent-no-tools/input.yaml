@@ -1,0 +1,3 @@
+# Agent without tools — tests that test_tool_usage.py is skipped
+agent_path: "langgraph/human_in_the_loop"
+jira_key: "RHAIENG-5146"

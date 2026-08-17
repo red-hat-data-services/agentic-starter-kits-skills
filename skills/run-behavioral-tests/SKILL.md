@@ -1,18 +1,18 @@
 ---
 name: run-behavioral-tests
 description: >-
-  Run and validate behavioral tests (pytest + EvalHub E2E) for an agent in the
+  Run and validate behavioral tests (pytest) for an agent in the
   agentic-starter-kits repo. Executes pytest with MLflow enrichment, verifies
-  trace structure, runs EvalHub E2E, cross-agent consistency check, and generates
+  trace structure, cross-agent consistency check, and generates
   a validation report. Use when running behavioral tests, validating btest setup,
   or re-running validation after fixes.
 argument-hint: "<agent_path>"
 ---
 # Run Behavioral Tests for an Agent
 
-Validation workflow for behavioral tests in the agentic-starter-kits repo. This skill executes and validates behavioral tests (pytest + EvalHub E2E) for an agent whose test scaffolding has already been created by the `add-behavioral-tests` skill (Phases 0-10). It runs pytest with MLflow trace enrichment, verifies trace structure, runs EvalHub E2E jobs, performs cross-agent consistency checks, and generates a validation report.
+Validation workflow for behavioral tests in the agentic-starter-kits repo. This skill executes and validates behavioral tests (pytest) for an agent whose test scaffolding has already been created by the `add-behavioral-tests` skill (Phases 0-8). It runs pytest with MLflow trace enrichment, verifies trace structure, performs cross-agent consistency checks, and generates a validation report.
 
-**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (1 through 11) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
+**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (1 through 6) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
 
 ## Boundary: Do NOT modify the agent under test
 
@@ -33,7 +33,7 @@ If you discover a bug or deficiency in the agent during any phase (e.g., tool ca
 
 **No exceptions** — this includes MLflow tracing. If tracing is missing or broken in the agent, log a bug under the parent epic. Do not run `/integrate-tracing` or modify any existing agent source file (`src/`, `main.py`, `Makefile`, `pyproject.toml`, `Containerfile`, tool definitions).
 
-Adding NEW test-only artifacts under the agent directory IS in scope: `tests/behavioral/`, `evalhub/`, and appending a testing section to the agent's README. These do not change agent behavior.
+Adding NEW test-only artifacts under the agent directory IS in scope: `tests/behavioral/` and appending a testing section to the agent's README. These do not change agent behavior.
 
 ## Input
 
@@ -45,11 +45,11 @@ Parse the arguments to determine:
 
 If no agent path is provided, ask the user which agent to run behavioral tests for.
 
-## Pre-flight: Verify Scaffolding Phases (0-10) Complete
+## Pre-flight: Verify Scaffolding Phases (0-8) Complete
 
-Before running validation, confirm that all scaffolding artifacts from the `add-behavioral-tests` skill exist. These checks correspond to the outputs of Phases 0-10.
+Before running validation, confirm that all scaffolding artifacts from the `add-behavioral-tests` skill exist. These checks correspond to the outputs of Phases 0-8.
 
-> **Gate system**: Gates are defined in `references/eval-criteria-run-btest-validate.json`. The `pre` gate fires automatically via PreToolUse hooks. Mid-execution gates (`phase-1` through `phase-10`) are evaluated inline at each sub-phase boundary — read the criteria file and verify all checks pass before proceeding.
+> **Gate system**: Gates are defined in `references/eval-criteria-run-btest-validate.json`. The `pre` gate fires automatically via PreToolUse hooks. Mid-execution gates (`phase-1` through `phase-5`) are evaluated inline at each sub-phase boundary — read the criteria file and verify all checks pass before proceeding.
 
 **Procedure**: For MLflow checks, run `mlflow-procedures.json: check-token-validity` first, then `mlflow-procedures.json: get-experiment-id`. If either fails, MLflow is not reachable — do not proceed to Phase 1.
 
@@ -59,13 +59,10 @@ Verify ALL of the following:
 2. **`oc` token**: `oc whoami -t` returns a valid token (not expired)
 3. **Test directory**: `agents/${AGENT_PATH}/tests/behavioral/conftest.py` exists (Phase 4 complete)
 4. **Golden queries**: `agents/${AGENT_PATH}/tests/behavioral/fixtures/golden_queries.yaml` exists (Phase 4 complete)
-5. **EvalHub fixture**: `agents/${AGENT_PATH}/evalhub/tool_use.yaml` exists (Phase 6 complete)
-6. **Containerfile**: `evals/evalhub_adapter/Containerfile` contains COPY line for agent (Phase 6 complete)
-7. **Thresholds**: `tests/behavioral/configs/thresholds.yaml` has agent section (Phase 5 complete)
-8. **E2E script**: `evals/evalhub_adapter/tests/run-e2e.sh` updated with agent blocks (Phase 10 complete)
-9. **Pytest runner script**: `tests/behavioral/deterministic/run-btests-pytest.sh` AGENTS array includes the agent (Phase 5 complete)
-10. **Shared conftest**: `tests/behavioral/conftest.py` `_AGENT_URL_MAP` includes the agent marker (Phase 5 complete)
-11. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
+5. **Thresholds**: `tests/behavioral/configs/thresholds.yaml` has agent section (Phase 5 complete)
+6. **Pytest runner script**: `tests/behavioral/deterministic/run-btests-pytest.sh` AGENTS array includes the agent (Phase 5 complete)
+7. **Shared conftest**: `tests/behavioral/conftest.py` `_AGENT_URL_MAP` includes the agent marker (Phase 5 complete)
+8. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
 12. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
 13. **MLFLOW_EXPERIMENT_NAME**: Set to the agent's **per-agent** experiment name (e.g., `<namespace>/<deployment-name>`). Each agent MUST have a unique experiment name — a shared name causes trace cross-contamination (RHAIENG-6743). The `run-btests-pytest.sh` script auto-detects per-agent experiment names from each deployment.
 14. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
@@ -189,81 +186,7 @@ Look for:
 
 **Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-4` — consult eval-criteria.
 
-## Phase 5: Run EvalHub E2E job
-
-Run the full E2E script to validate the EvalHub integration end-to-end:
-
-```bash
-cd evals/evalhub_adapter/tests
-./run-e2e.sh
-```
-
-This must:
-
-- Discover the new agent's route
-- Build/push the updated adapter image (with the new COPY'd fixture)
-- Register the provider
-- Submit eval jobs for ALL agents (including the new one)
-- Poll until completion
-- Report results with non-null scores
-
-Verify the new agent's job completes with `state: completed` and scores are reasonable. Failures in other agents' jobs that are unrelated to tracing may be pre-existing, but `mlflow_run_id: null` is NEVER pre-existing — it is always a FAIL.
-
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-5` — consult eval-criteria.
-
-## Phase 6: Verify E2E MLflow enrichment
-
-After the E2E run, verify that MLflow enrichment worked — this mirrors Phase 2 but for the EvalHub-orchestrated run. Use procedures from `references/mlflow-procedures.json`:
-
-1. **Run `count-traces-since`** to verify new traces were created during the E2E run. Compare trace count before vs after.
-2. **mlflow_run_id must be non-null** for ALL agents' eval results. A null `mlflow_run_id` means the agent did not produce a trace — this is a FAILURE regardless of which agent produced it. Debug with: `oc get deployment/<agent> -o jsonpath='{.spec.template.spec.containers[0].env}'` to check MLflow env vars on the pod.
-3. **No enrichment failures**: Check E2E script output for "MLflow enrichment failed" or "enrichment error".
-4. **tool_calls populated**: Tool selection scores > 0 for queries with expected_tools. All-zero scores mean enrichment failed silently.
-
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-6` — consult eval-criteria.
-
-## Phase 7: Verify E2E MLflow trace structure
-
-Inspect MLflow traces created during the E2E run — this mirrors Phase 3. Run the `inspect-span-types` procedure from `references/mlflow-procedures.json`. Same procedure as Phase 3, same expected output:
-
-- `[TOOL]` spans with agent tool names
-- `[CHAT_MODEL]` spans with `tokenUsage`
-- Framework spans (`[CHAIN]`/`[AGENT]`/`[RETRIEVER]`)
-- Parent/child nesting (not all `parent=ROOT`)
-
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-7` — consult eval-criteria.
-
-## Phase 8: Check agent pod logs after E2E
-
-Inspect agent pod logs after the E2E run — this mirrors Phase 4.
-
-```bash
-oc logs deployment/<agent-name> -n <namespace> --tail=50
-```
-
-Look for:
-
-- MLflow connection errors or auth failures
-- Tracing activity during the E2E run window
-- Span creation failures
-- Unhandled exceptions related to MLflow or tracing
-
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-8` — consult eval-criteria.
-
-## Phase 9: Inspect EvalHub adapter container
-
-Verify the adapter container is correctly configured for the new agent:
-
-1. **Fixture present**: `oc exec deployment/evalhub-adapter -- ls fixtures/<agent_short>/tool_use.yaml`
-2. **Fixture parseable**: No YAML errors in adapter logs related to the agent's fixture
-3. **Provider registered**: EvalHub API lists the agent with correct route URL
-4. **Scoring config**: `stream=false` unless agent is "Standard streaming"
-5. **Adapter logs clean**: No errors for this agent (connection, scoring, timeout)
-6. **MLflow connectivity**: Adapter can reach MLflow for trace enrichment
-
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-9` — consult eval-criteria.
-
-## Phase 10: Cross-agent Implementation Consistency Check
+## Phase 5: Cross-agent Implementation Consistency Check
 
 Read the full behavioral test implementation of ALL existing agents (`agents/*/templates/*/tests/behavioral/`) and verify the new agent is consistent across every layer. If ANY existing agent deviates, fix it in this PR.
 
@@ -284,16 +207,15 @@ Read the full behavioral test implementation of ALL existing agents (`agents/*/t
 
 **Fixtures:**
 11. `golden_queries.yaml` standard schema: `query`, `expected_tools`, `expected_elements`, `difficulty`, `category`
-12. `evalhub/tool_use.yaml` standard schema: `query`, `expected_tools`, `expected_elements`
 
 **Config:**
-13. `thresholds.yaml` agent section has the same keys as other agents
+12. `thresholds.yaml` agent section has the same keys as other agents
 
-**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-10` — consult eval-criteria.
+**Gate**: `agentic-starter-kits-skills:run-behavioral-tests.phase-5` — consult eval-criteria.
 
-## Phase 11: Generate Validation Report
+## Phase 6: Generate Validation Report
 
-After all Phase 1-10 gates have been evaluated, generate a validation report. The PostToolUse hook emits a report template (`<eval-report>`) — use it as the structure.
+After all Phase 1-5 gates have been evaluated, generate a validation report. The PostToolUse hook emits a report template (`<eval-report>`) — use it as the structure.
 
 Write the completed report to: `tests/behavioral/reports/BTEST_VALIDATION_REPORT_<agent_name>.md`
 
@@ -304,7 +226,7 @@ For every assertion:
 - `[WAIVED]` — waiver condition met (with Jira bug reference)
 - `[SKIPPED]` — not applicable
 
-Fill in all summary sections (MLflow Trace Summary, EvalHub E2E Summary, Bugs Filed). This report is a permanent record and should be committed alongside the test artifacts.
+Fill in all summary sections (MLflow Trace Summary, Bugs Filed). This report is a permanent record and should be committed alongside the test artifacts.
 
 ## Definition of Done
 
@@ -315,12 +237,7 @@ Fill in all summary sections (MLflow Trace Summary, EvalHub E2E Summary, Bugs Fi
 - [ ]  Phase 2: tool_calls enrichment gate passed (or waived with bug ticket if tracing is missing)
 - [ ]  Phase 3: MLflow trace structure verified
 - [ ]  Phase 4: Agent pod logs clean
-- [ ]  Phase 5: EvalHub E2E job completes with reasonable scores
-- [ ]  Phase 6: E2E MLflow enrichment verified (mlflow_run_id non-null for all agents)
-- [ ]  Phase 7: E2E MLflow trace structure verified
-- [ ]  Phase 8: Agent pod logs clean after E2E
-- [ ]  Phase 9: EvalHub adapter container inspection passed
 - [ ]  Any agent bugs found during the process are filed as Jira bugs under the parent epic
-- [ ]  Phase 10: Cross-agent consistency check passed (13-point verification)
-- [ ]  Phase 11: Validation report generated and committed
+- [ ]  Phase 5: Cross-agent consistency check passed (12-point verification)
+- [ ]  Phase 6: Validation report generated and committed
 - [ ]  Jira ticket updated with results summary

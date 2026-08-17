@@ -1,0 +1,9 @@
+has_tools: true
+supports_streaming: false
+has_mlflow_tracing: false
+expected_test_files: []
+expected_modified_files: []
+# This is an error case — the skill should detect the non-standard agent
+# and stop with a clear message that this workflow doesn't support it
+expect_early_exit: true
+early_exit_reason: "Non-standard agent (a2a custom chart, no standard Makefile targets)"

@@ -350,15 +350,6 @@ def build_report_template(command_criteria: Dict[str, Any], agent_path: str, ski
         lines.append("- **Framework spans found**: <yes/no>")
         lines.append("- **Enrichment mode**: <MLflow traces / content heuristics (degraded)>")
 
-    if "evalhub" in sections:
-        lines.append("")
-        lines.append("## EvalHub E2E Summary")
-        lines.append("")
-        lines.append("- **Job state**: <completed/failed>")
-        lines.append("- **Scores**: <fill in>")
-        lines.append("- **Adapter image**: <fill in>")
-        lines.append("- **Fixture path**: <fill in>")
-
     lines.append("")
     lines.append("---")
     lines.append("</eval-report>")

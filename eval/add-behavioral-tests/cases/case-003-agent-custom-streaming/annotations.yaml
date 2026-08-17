@@ -1,0 +1,18 @@
+has_tools: true
+supports_streaming: false
+has_mlflow_tracing: true
+expected_test_files:
+  - conftest.py
+  - test_tool_usage.py
+  - test_response_quality.py
+  - test_cost_latency.py
+  - test_reliability.py
+  # test_streaming_parity.py should NOT be created — AutoGen uses custom SSE events
+expected_modified_files:
+  - tests/behavioral/configs/thresholds.yaml
+  - pyproject.toml
+  - README.md
+# AutoGen-specific: uses mcp.tool_usage SSE events instead of standard delta.tool_calls
+custom_streaming_note: >
+  This agent emits tool calls via custom mcp.tool_usage SSE events, not
+  standard delta.tool_calls. STREAM must be False in conftest.py.

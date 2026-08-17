@@ -1,0 +1,16 @@
+# LLM answerer guidance for missing tracing case
+parent_epic: "TODO_PARENT_EPIC"
+redeploy_existing: true
+redeploy_guidance: >
+  Redeploy the LangGraph react agent. Even though tracing is missing,
+  the agent should still be deployed for health check and response testing.
+jira_context_guidance: >
+  The LangGraph react agent does not have MLflow tracing integrated.
+  The skill should detect this in Phase 2a (check for src/tracing.py,
+  enable_tracing() call, pyproject deps, Makefile flags) and log a Jira
+  bug rather than modifying agent code. Tests should be written against
+  the agent's current behavior in degraded mode.
+bug_filing_guidance: >
+  File a Jira bug under the parent epic for missing MLflow tracing.
+  The bug should describe which tracing indicators are missing and
+  reference the behavioral-tests label.

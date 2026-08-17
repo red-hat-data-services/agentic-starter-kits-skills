@@ -1,0 +1,3 @@
+# Agent missing MLflow tracing — Phase 2 skipped, bug filed, tests written in degraded mode
+agent_path: "langgraph/react_agent"
+jira_key: "RHAIENG-5126"
