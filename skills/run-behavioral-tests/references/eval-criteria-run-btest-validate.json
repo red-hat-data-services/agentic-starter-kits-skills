@@ -149,7 +149,7 @@
         ],
         "waiver": {
           "condition": "Phase 2a determined tracing is missing/broken AND a Jira bug was filed under parent epic",
-          "action": "Document degraded mode in agent README testing section (Phase 8 item 5), reference the bug ticket, note expected behavior once tracing is fixed"
+          "action": "Document degraded mode in agent README testing section (Phase 7 item 3), reference the bug ticket, note expected behavior once tracing is fixed"
         }
       },
       "phase-3": {
