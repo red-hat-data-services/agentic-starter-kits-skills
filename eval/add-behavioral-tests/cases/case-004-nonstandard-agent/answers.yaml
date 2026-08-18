@@ -1,6 +1,0 @@
-# LLM answerer guidance for non-standard agent error case
-parent_epic: "TODO_PARENT_EPIC"
-jira_context_guidance: >
-  The a2a/langgraph_crewai_agent is a non-standard agent with a custom
-  Helm chart. The skill should detect this in Phase 1 and stop with a
-  clear error message. No test files should be created.

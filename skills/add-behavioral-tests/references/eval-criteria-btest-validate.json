@@ -81,7 +81,7 @@
       }
     },
     "post": {
-      "description": "Scaffolding complete \u2014 all Phases 0-10 artifacts created",
+      "description": "Scaffolding complete \u2014 all Phases 0-8 artifacts created",
       "assertions": [
         {
           "id": "tests-dir",
@@ -127,9 +127,9 @@
         },
         {
           "id": "langflow-no-mlflow-traces",
-          "description": "Langflow uses Langfuse, not MLflow — trace structure checks (11c, 11f, 11g) skipped",
+          "description": "Langflow uses Langfuse, not MLflow — trace structure checks skipped",
           "type": "eval",
-          "criteria": "Gates 11c, 11f, 11g are skipped for framework=langflow. No MLflow traces to verify.",
+          "criteria": "run-btest Phase 3 (trace structure) is skipped for framework=langflow. No MLflow traces to verify.",
           "applies_when": "framework == langflow",
           "result": "SKIP"
         },

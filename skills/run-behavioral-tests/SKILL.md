@@ -63,12 +63,12 @@ Verify ALL of the following:
 6. **Pytest runner script**: `tests/behavioral/deterministic/run-btests-pytest.sh` AGENTS array includes the agent (Phase 5 complete)
 7. **Shared conftest**: `tests/behavioral/conftest.py` `_AGENT_URL_MAP` includes the agent marker (Phase 5 complete)
 8. **Agent health**: Agent deployed and reachable (health endpoint returns OK)
-12. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
-13. **MLFLOW_EXPERIMENT_NAME**: Set to the agent's **per-agent** experiment name (e.g., `<namespace>/<deployment-name>`). Each agent MUST have a unique experiment name — a shared name causes trace cross-contamination (RHAIENG-6743). The `run-btests-pytest.sh` script auto-detects per-agent experiment names from each deployment.
-14. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
-15. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
-16. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`, `GOOGLE_ADK_AGENT_URL`) is set and points to the deployed OpenShift route
-17. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
+9. **MLFLOW_TRACKING_URI**: Set to the cluster MLflow instance
+10. **MLFLOW_EXPERIMENT_NAME**: Set to the agent's **per-agent** experiment name (e.g., `<namespace>/<deployment-name>`). Each agent MUST have a unique experiment name — a shared name causes trace cross-contamination (RHAIENG-6743). The `run-btests-pytest.sh` script auto-detects per-agent experiment names from each deployment.
+11. **MLFLOW_WORKSPACE**: Set to the OpenShift namespace (same as `oc project -q`)
+12. **MLFLOW_TRACKING_INSECURE_TLS**: Set to `true` for OpenShift clusters with self-signed certs
+13. **Agent URL env var**: Agent-specific URL env var (e.g. `CREWAI_WEBSEARCH_AGENT_URL`, `GOOGLE_ADK_AGENT_URL`) is set and points to the deployed OpenShift route
+14. **Agent pod MLflow tokens valid**: For each agent under test, check the pod startup logs for `[Tracing Enabled]` vs `[Tracing] Failed to configure`. If ANY agent shows tracing failures (e.g. `Expecting value: line 1 column 1 (char 0)` — the classic expired-token symptom), the tokens are expired and MUST be refreshed before proceeding.
 
 ### Mandatory: Refresh MLflow tokens before testing
 

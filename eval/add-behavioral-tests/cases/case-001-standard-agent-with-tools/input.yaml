@@ -1,3 +1,0 @@
-# Standard agent with tools and MLflow tracing — happy path
-agent_path: "google/adk"
-jira_key: "RHAIENG-5390"

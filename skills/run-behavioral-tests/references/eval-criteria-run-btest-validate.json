@@ -5,7 +5,7 @@
       "sections": ["mlflow"]
     },
     "pre": {
-      "description": "Pre-flight checks — all scaffolding phases (0-10) complete",
+      "description": "Pre-flight checks — all scaffolding phases (0-8) complete",
       "procedure": "For MLflow checks: run mlflow-procedures.json: check-token-validity first, then mlflow-procedures.json: get-experiment-id. If either fails, MLflow is not reachable — do not proceed to Phase 1.",
       "assertions": [
         {

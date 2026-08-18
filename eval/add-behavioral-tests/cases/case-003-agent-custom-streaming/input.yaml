@@ -1,3 +1,0 @@
-# AutoGen agent with custom SSE events — STREAM must be False, no streaming parity test
-agent_path: "autogen/mcp_agent"
-jira_key: "RHAIENG-5127"
