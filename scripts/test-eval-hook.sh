@@ -550,12 +550,6 @@ run_test \
     "output" \
     "MLflow Trace Summary"
 
-run_test \
-    "report template has EvalHub section" \
-    '{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \
-    "output" \
-    "EvalHub E2E Summary"
-
 run_test_absent \
     "PreToolUse does NOT include report template" \
     '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"agentic-starter-kits-skills:run-behavioral-tests","args":"langgraph/agentic_rag"}}' \

@@ -1,18 +1,18 @@
 ---
 name: add-behavioral-tests
 description: >-
-  Add behavioral testing (pytest + EvalHub) to an agent in the agentic-starter-kits repo.
-  Covers runner compatibility, test files, golden queries, thresholds, EvalHub fixture,
-  Containerfile, docs, and MLflow tracing verification. Use when implementing
+  Add behavioral testing (pytest) to an agent in the agentic-starter-kits repo.
+  Covers runner compatibility, test files, golden queries, thresholds,
+  docs, and MLflow tracing verification. Use when implementing
   behavioral tests for a new agent or when the user mentions btest, behavioral tests,
   eval coverage, or test harness integration.
 argument-hint: "<agent_path> [JIRA-KEY]"
 ---
 # Add Behavioral Tests to an Agent
 
-End-to-end workflow for adding behavioral testing support to any agent in the agentic-starter-kits repo. Produces pytest behavioral tests + EvalHub fixture + documentation updates. Verifies (but does not set up) MLflow tracing.
+End-to-end workflow for adding behavioral testing support to any agent in the agentic-starter-kits repo. Produces pytest behavioral tests + documentation updates. Verifies (but does not set up) MLflow tracing.
 
-**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (0 through 10, plus validation via run-behavioral-tests) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
+**MANDATORY: Every phase and every sub-step in this workflow is a hard requirement.** You MUST complete all phases (0 through 8, plus validation via run-behavioral-tests) and all items in the Definition of Done before reporting the work as complete. No phase may be deferred, skipped, or marked as "infrastructure is in place." If a phase fails, debug and fix it — do not proceed past it until it passes. If a phase is genuinely blocked by an external dependency, stop and notify the user immediately rather than silently skipping it.
 
 ## Boundary: Do NOT modify the agent under test
 
@@ -28,12 +28,12 @@ If you discover a bug or deficiency in the agent during any phase (e.g., tool ca
    - Parent: the parent epic key
    - Description: what was observed, expected behavior, and which phase of btest work uncovered it
    - Label: `behavioral-tests`
-3. **Document the limitation** in the agent's README testing section (Phase 8 item 5) — note which tests are affected and link the bug ticket.
+3. **Document the limitation** in the agent's README testing section (Phase 7 item 3) — note which tests are affected and link the bug ticket.
 4. **Continue with the remaining phases** — write the tests against the agent's current behavior. Tests that exercise the buggy path should use realistic thresholds reflecting actual behavior, not aspirational targets.
 
 **No exceptions** — this includes MLflow tracing. If tracing is missing or broken in the agent, log a bug under the parent epic. Do not run `/integrate-tracing` or modify any existing agent source file (`src/`, `main.py`, `Makefile`, `pyproject.toml`, `Containerfile`, tool definitions).
 
-Adding NEW test-only artifacts under the agent directory IS in scope: `tests/behavioral/`, `evalhub/`, and appending a testing section to the agent's README. These do not change agent behavior.
+Adding NEW test-only artifacts under the agent directory IS in scope: `tests/behavioral/` and appending a testing section to the agent's README. These do not change agent behavior.
 
 ## Input
 
@@ -69,7 +69,7 @@ Use the ticket to determine:
 - **Branch naming** -- derive from Jira key: `<JIRA-KEY>/btest-<agent-short-name>`
 - **Cluster/environment** -- where tests will run (if specified)
 
-**If Jira MCP tools are unavailable** (no auth, connection failure): ask the user to provide the ticket summary, acceptance criteria, and parent epic key manually. For bug logging (Boundary section), list the bugs that need to be filed in the agent's README testing section (Phase 8 item 5) and ask the user to create them in Jira manually.
+**If Jira MCP tools are unavailable** (no auth, connection failure): ask the user to provide the ticket summary, acceptance criteria, and parent epic key manually. For bug logging (Boundary section), list the bugs that need to be filed in the agent's README testing section (Phase 7 item 3) and ask the user to create them in Jira manually.
 
 Only proceed to Phase 1 once you have a clear ticket and scope.
 
@@ -90,7 +90,7 @@ oc get routes -n <namespace>
 
 Determine:
 
-- Is the agent already deployed? If **not deployed**, deploy it now using `/agentic-starter-kits-skills:deploy-agents <framework>/<agent_name>`. Do NOT defer deployment to Phase 9 — the agent must be running before you proceed to Phase 2 (MLflow tracing verification requires a live agent). Do NOT manually run `make deploy` — see Phase 9 for why `/agentic-starter-kits-skills:deploy-agents` is mandatory.
+- Is the agent already deployed? If **not deployed**, deploy it now using `/agentic-starter-kits-skills:deploy-agents <framework>/<agent_name>`. Do NOT defer deployment to Phase 8 — the agent must be running before you proceed to Phase 2 (MLflow tracing verification requires a live agent). Do NOT manually run `make deploy` — see Phase 8 for why `/agentic-starter-kits-skills:deploy-agents` is mandatory.
 - What other agents are deployed? (use `helm get values <agent>` to discover cluster-specific config: BASE_URL, MODEL_ID, MLflow vars)
 - Is there an MLflow instance? What's the tracking URI?
 
@@ -133,7 +133,7 @@ Gather these facts:
    - Standard OpenAI format (`choices[].message.content` + `tool_calls`) -- harness works as-is
    - Custom format (e.g. `messages[]` + `tool_invocations[]`) -- harness needs adaptation
 4. **System prompt**: Check if it discourages tool use (e.g. "only call tools if you cannot answer from knowledge"). This affects golden query design.
-5. **Streaming mode assessment**: Determine how the agent handles streaming and tool-call exposure. This directly affects whether behavioral tests and EvalHub jobs can extract tool calls reliably.
+5. **Streaming mode assessment**: Determine how the agent handles streaming and tool-call exposure. This directly affects whether behavioral tests can extract tool calls reliably.
 
    **Check these in order:**
    a. Does the agent's `/chat/completions` handler support `stream=true`? (look for SSE/`StreamingResponse` in `main.py`)
@@ -146,10 +146,10 @@ Gather these facts:
    - **Custom streaming** (e.g. AutoGen MCP): tool calls in non-standard SSE events — `stream=false` REQUIRED for reliable tool scoring
    - **No streaming**: agent ignores the `stream` parameter or returns errors — `stream=false` required
 
-   **Default rule**: All behavioral tests and EvalHub fixtures MUST use `stream=false` unless the agent is verified to emit standard `delta.tool_calls` in its SSE stream. The runner's `_run_streaming()` only accumulates `delta.tool_calls` from standard OpenAI-format chunks; custom SSE events are invisible to it, resulting in empty `tool_calls` and failed tool selection scoring.
+   **Default rule**: All behavioral tests MUST use `stream=false` unless the agent is verified to emit standard `delta.tool_calls` in its SSE stream. The runner's `_run_streaming()` only accumulates `delta.tool_calls` from standard OpenAI-format chunks; custom SSE events are invisible to it, resulting in empty `tool_calls` and failed tool selection scoring.
 
-   Record the agent's streaming classification — it is needed in Phase 6 (EvalHub) and Phase 10 (E2E script).
-6. **Makefile deploy target**: Note whether the Makefile exists and has standard targets (`deploy`, `run-app`). MLflow support is checked in detail in Phase 7.
+   Record the agent's streaming classification — it is needed for conftest.py `STREAM` constant configuration.
+6. **Makefile deploy target**: Note whether the Makefile exists and has standard targets (`deploy`, `run-app`). MLflow support is checked in detail in Phase 6.
 
 ## Phase 2: Verify MLflow Tracing
 
@@ -174,7 +174,7 @@ Look for these indicators in the agent directory:
 
 **If all four are present**: tracing is integrated. Proceed to Phase 2b to verify it works.
 
-**If any are missing or broken**: tracing is not integrated. Per the Boundary rule, do NOT modify the agent — log a Jira bug under the parent epic describing which tracing indicators are missing. **Skip Phase 2b entirely** and proceed directly to Phase 3. Tool selection tests will operate in degraded mode (content heuristics only) until tracing is fixed by the agent owner. Document this limitation in the agent's README testing section (Phase 8 item 5).
+**If any are missing or broken**: tracing is not integrated. Per the Boundary rule, do NOT modify the agent — log a Jira bug under the parent epic describing which tracing indicators are missing. **Skip Phase 2b entirely** and proceed directly to Phase 3. Tool selection tests will operate in degraded mode (content heuristics only) until tracing is fixed by the agent owner. Document this limitation in the agent's README testing section (Phase 7 item 3).
 
 ### 2b: Verify tracing works locally
 
@@ -425,71 +425,25 @@ The format is `agent_path|url_env_var|deployment_name` where:
 - `url_env_var` matches the key in `_AGENT_URL_MAP` (e.g. `HITL_AGENT_URL`)
 - `deployment_name` is the Helm release name (e.g. `langgraph-hitl-agent`)
 
-## Phase 6: EvalHub Fixture
-
-### Stream configuration
-
-The EvalHub adapter defaults to `stream=false` (`evals/evalhub_adapter/config.py`). This is intentional — non-streaming JSON responses include tool calls in the body, making tool scoring reliable across all agent types.
-
-**Do NOT set `stream: true`** in the agent's EvalHub fixture or job config unless the agent was classified as "Standard streaming" in Phase 1 step 5 (i.e., it emits `delta.tool_calls` in standard OpenAI SSE chunks). If the agent uses custom SSE events for tool calls, streaming will produce empty `tool_calls` and all tool selection scores will be zero.
-
-When in doubt, leave `stream` unset and rely on the adapter default (`false`).
-
-### Create fixture
-
-`agents/<framework>/<agent_name>/evalhub/tool_use.yaml` -- same schema as existing fixtures:
-
-```yaml
-queries:
-  - query: "..."
-    expected_tools: ["tool_a"]
-    expected_elements: ["keyword"]
-```
-
-#### Langflow EvalHub configuration
-
-For `framework: langflow` agents, the EvalHub job config YAML must include
-`api_format` and `flow_id` parameters:
-
-```yaml
-parameters:
-  api_format: langflow_run
-  flow_id: ${LANGFLOW_FLOW_ID}
-```
-
-The adapter's `_get_langflow_token()` handles auth automatically.
-
-### Update Containerfile
-
-Add COPY line to `evals/evalhub_adapter/Containerfile`:
-
-```dockerfile
-COPY agents/<framework>/<agent_name>/evalhub/ ./fixtures/<short_name>/
-```
-
-Extend the `RUN` assertion to include the new path.
-
-## Phase 7: Check Makefile MLflow Support
+## Phase 6: Check Makefile MLflow Support
 
 Check if the agent's Makefile `deploy` target has MLflow support (conditional `--set` for `MLFLOW_*` vars). Compare against `agents/langgraph/templates/react_agent/Makefile` as the reference.
 
 **If MLflow deploy support is missing**: do NOT modify the agent's Makefile. Log a Jira bug under the parent epic noting the missing MLflow Helm flags. The agent can still be deployed without MLflow — tracing just won't work on-cluster until the Makefile is updated by the agent owner.
 
-**Langflow exception**: Skip Phase 7 entirely for `framework: langflow`
+**Langflow exception**: Skip Phase 6 entirely for `framework: langflow`
 agents. They use Langfuse for tracing, not MLflow. There are no MLflow
 Helm flags to check.
 
-## Phase 8: Documentation Updates
+## Phase 7: Documentation Updates
 
 Update these files to reference the new agent:
 
 1. **README.md** -- Add env var row to behavioral tests table
 2. **docs/adding-behavioral-tests.md** -- Add to "See existing implementations" lists
-3. **docs/adding-evalhub-agent-integration.md** -- Add to "Existing fixtures" list
-4. **evals/evalhub_adapter/README.md** -- Update fixture listings, COPY mappings, fixtures_path notes, "What works now"
-5. **agents/<framework>/<agent_name>/README.md** -- Add testing section with env var and pytest command
+3. **agents/<framework>/<agent_name>/README.md** -- Add testing section with env var and pytest command
 
-## Phase 9: Verify Agent Deployment
+## Phase 8: Verify Agent Deployment
 
 The agent was deployed in Phase 1 via `/agentic-starter-kits-skills:deploy-agents`. This phase verifies the deployment is still healthy before proceeding to validation.
 
@@ -499,7 +453,7 @@ curl -sf --max-time 10 "https://<agent-route>/health"
 
 If the agent is unhealthy or the pod restarted since Phase 1, redeploy using `/agentic-starter-kits-skills:deploy-agents <framework>/<agent_name>`. **ALL deployment MUST go through `/agentic-starter-kits-skills:deploy-agents`** — do NOT manually run `make build`, `make push`, or `make deploy`. The `/agentic-starter-kits-skills:deploy-agents` skill handles cluster config auto-detection, `.env` generation, container build/push, Helm deployment, AND a comprehensive MLflow token refresh across ALL agents in the namespace (Step 4). Manual deployment skips the token refresh, which leaves other agents with stale tokens and breaks MLflow tracing cluster-wide. There is no valid reason to bypass `/agentic-starter-kits-skills:deploy-agents`.
 
-**If deployment fails**: this is a **critical blocker**. Stop and notify the user immediately. Do NOT fall back to local testing — all Phase 11 validation requires a live on-cluster deployment with MLflow tracing. Diagnose the root cause, log a Jira bug under the parent epic, and do not proceed until deployment succeeds.
+**If deployment fails**: this is a **critical blocker**. Stop and notify the user immediately. Do NOT fall back to local testing — all Phase 9 validation requires a live on-cluster deployment with MLflow tracing. Diagnose the root cause, log a Jira bug under the parent epic, and do not proceed until deployment succeeds.
 
 **Langflow exception**: For `deploymentModel: flow-import` agents, do NOT
 use `/deploy-agents`. Langflow agents are pre-deployed via flow-import.
@@ -512,55 +466,28 @@ Verify deployment with:
 If unhealthy, notify the user — Langflow redeployment requires flow
 re-import, not `make deploy`.
 
-## Phase 10: Update run-e2e.sh
-
-The E2E script (`evals/evalhub_adapter/tests/run-e2e.sh`) auto-discovers agents and submits EvalHub jobs. It must be updated to include the new agent:
-
-1. **Route discovery**: Add route lookup for the new agent (uses `oc get route` + grep pattern)
-2. **Job submission**: Add a submission block that generates a YAML config for the new agent with the correct `fixtures_path` (matching what was COPY'd in the Containerfile)
-3. **Results polling**: Ensure the new agent's job is waited on and results reported
-
-Reference the existing agent blocks in the script for the pattern. Each agent needs:
-
-- Route variable (e.g. `AUTOGEN_ROUTE`)
-- Generated eval YAML with `model.url`, `parameters.fixtures_path`
-- Job submission + poll + result extraction
-
-**Stream parameter in generated YAML**: Do NOT add `stream: true` to the generated eval config unless the agent was classified as "Standard streaming" in Phase 1 step 5. The adapter defaults to `stream=false`, which is correct for most agents. If omitted from the YAML, the default applies.
-
-#### Langflow E2E additions
-
-The Langflow E2E block requires:
-- **Route discovery**: `oc get route -n langflow-agent langflow`
-  (separate namespace from standard agents)
-- **Flow ID discovery**: `GET /api/v1/flows/` with Bearer token
-- **Auth token**: `GET /api/v1/auto_login` for Bearer token
-- **Job YAML**: Include `api_format: langflow_run` and `flow_id` parameters
-- **Conditional execution**: Guard with `if [[ -f eval-langflow-*.yaml ]]`
-  so the script doesn't fail if Langflow is not deployed
-
-## Phase 11: Run Validation
+## Phase 9: Run Validation
 
 Invoke the validation skill to execute all test validation phases:
 
 `/agentic-starter-kits-skills:run-behavioral-tests <agent_path>`
 
-This runs pytest, verifies MLflow traces, executes EvalHub E2E, performs cross-agent consistency checks, and generates the validation report. See the `run-behavioral-tests` skill for full validation details.
+This runs pytest, verifies MLflow traces, performs cross-agent consistency checks, and generates the validation report. See the `run-behavioral-tests` skill for full validation details.
 
 ### Langflow validation exceptions
 
 The following exceptions apply when `framework: langflow` in `agent.yaml`:
 
-**Phase 11b exception**: This gate is WAIVED for `framework: langflow` agents.
+**Phase 2 exception**: This gate is WAIVED for `framework: langflow` agents.
 Tool calls come from HTTP response `content_blocks` (via
 `_extract_langflow_tool_calls()` in runner.py), not from MLflow trace
 enrichment. No enrichment warning check is needed. The gate passes if
 `result.tool_calls` is non-empty after `run_task()` returns.
 
-**Phase 11c, 11f, 11g exception**: SKIP for `framework: langflow` agents. These agents
+**Phase 3 exception**: SKIP for `framework: langflow` agents. These agents
 use Langfuse for tracing, not MLflow. There are no MLflow traces to inspect.
 
-**Phase 11j cross-agent consistency exception**: Langflow agents have NO MLflow enrichment block in
+**Phase 5 cross-agent consistency exception**: Langflow agents have NO MLflow enrichment block in
 conftest.py — this is correct and expected. The consistency check should
 verify that Langflow conftest uses `api_format='langflow_run'` and `flow_id`
 instead.
@@ -570,14 +497,11 @@ instead.
 **MANDATORY — every item below is a hard acceptance requirement.** Do not mark the work complete until ALL items are verified. Do not defer, skip, or report any item as "ready to run later." Each item must be executed and pass during this session.
 
 - [ ]  `tests/behavioral/` directory created with conftest.py, test files, and golden_queries.yaml
-- [ ]  `evalhub/tool_use.yaml` fixture created
-- [ ]  `evals/evalhub_adapter/Containerfile` updated with COPY line and RUN assertion
 - [ ]  `tests/behavioral/configs/thresholds.yaml` updated with agent section
 - [ ]  Repo-root `pyproject.toml` updated with pytest marker
 - [ ]  `tests/behavioral/conftest.py` updated with `_AGENT_URL_MAP` entry
 - [ ]  `tests/behavioral/deterministic/run-btests-pytest.sh` updated with AGENTS entry
-- [ ]  `evals/evalhub_adapter/tests/run-e2e.sh` updated with agent blocks
-- [ ]  All five documentation files updated (Phase 8 items 1-5)
+- [ ]  All three documentation files updated (Phase 7 items 1-3)
 - [ ]  Any agent bugs found during the process are filed as Jira bugs under the parent epic
-- [ ]  Phase 11: Validation completed via `/agentic-starter-kits-skills:run-behavioral-tests`
+- [ ]  Phase 9: Validation completed via `/agentic-starter-kits-skills:run-behavioral-tests`
 - [ ]  Jira ticket updated with results summary

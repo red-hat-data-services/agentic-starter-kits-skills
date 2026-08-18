@@ -81,7 +81,7 @@
       }
     },
     "post": {
-      "description": "Scaffolding complete \u2014 all Phases 0-10 artifacts created",
+      "description": "Scaffolding complete \u2014 all Phases 0-8 artifacts created",
       "assertions": [
         {
           "id": "tests-dir",
@@ -98,32 +98,11 @@
           "description": "golden_queries.yaml fixture exists"
         },
         {
-          "id": "evalhub-fixture",
-          "type": "exec",
-          "command": "test -f agents/${AGENT_PATH}/evalhub/tool_use.yaml",
-          "on_fail": "block",
-          "description": "EvalHub fixture exists"
-        },
-        {
-          "id": "containerfile-updated",
-          "type": "exec",
-          "command": "grep -q '${AGENT_SHORT}' evals/evalhub_adapter/Containerfile",
-          "on_fail": "block",
-          "description": "Containerfile has COPY line for agent"
-        },
-        {
           "id": "thresholds-updated",
           "type": "exec",
           "command": "grep -q '${AGENT_KEY}' tests/behavioral/configs/thresholds.yaml",
           "on_fail": "block",
           "description": "thresholds.yaml has agent section"
-        },
-        {
-          "id": "run-e2e-updated",
-          "type": "exec",
-          "command": "grep -q '${AGENT_ROUTE_VAR}' evals/evalhub_adapter/tests/run-e2e.sh",
-          "on_fail": "block",
-          "description": "run-e2e.sh updated with agent blocks"
         },
         {
           "id": "pytest-marker",
@@ -135,8 +114,8 @@
         {
           "id": "docs-updated",
           "type": "eval",
-          "description": "All five documentation files updated per Phase 8",
-          "pass_if": "README.md, adding-behavioral-tests.md, adding-evalhub-agent-integration.md, evalhub_adapter/README.md, and agent README all updated with new agent references"
+          "description": "All three documentation files updated per Phase 7",
+          "pass_if": "README.md, adding-behavioral-tests.md, and agent README all updated with new agent references"
         },
         {
           "id": "langflow-content-blocks-waiver",
@@ -148,9 +127,9 @@
         },
         {
           "id": "langflow-no-mlflow-traces",
-          "description": "Langflow uses Langfuse, not MLflow — trace structure checks (11c, 11f, 11g) skipped",
+          "description": "Langflow uses Langfuse, not MLflow — trace structure checks skipped",
           "type": "eval",
-          "criteria": "Gates 11c, 11f, 11g are skipped for framework=langflow. No MLflow traces to verify.",
+          "criteria": "run-btest Phase 3 (trace structure) is skipped for framework=langflow. No MLflow traces to verify.",
           "applies_when": "framework == langflow",
           "result": "SKIP"
         },
