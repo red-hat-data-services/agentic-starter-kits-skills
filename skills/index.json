@@ -1,0 +1,18 @@
+{
+  "skills": [
+    {"name": "add-behavioral-tests", "version": "1.0.0", "files": ["SKILL.md", "references/eval-criteria-btest-validate.json", "references/mlflow-procedures.json"]},
+    {"name": "add-integration-tests", "version": "1.0.0", "files": ["SKILL.md", "references/eval-criteria-itest-validate.json"]},
+    {"name": "add-manual-tracing", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "check-autolog-support", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "create-tracing-module", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "deploy-agents", "version": "1.0.0", "files": ["SKILL.md", "references/eval-criteria-deploy-validate.json"]},
+    {"name": "fit-check", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "integrate-tracing", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "kagenti-deploy", "version": "1.0.0", "files": ["SKILL.md", "scripts/verify-kagenti.sh"]},
+    {"name": "review-tracing-code", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "run-behavioral-tests", "version": "1.0.0", "files": ["SKILL.md", "references/eval-criteria-run-btest-validate.json", "references/mlflow-procedures.json"]},
+    {"name": "test-tracing", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "verify-traces", "version": "1.0.0", "files": ["SKILL.md"]},
+    {"name": "wire-into-lifespan", "version": "1.0.0", "files": ["SKILL.md"]}
+  ]
+}
