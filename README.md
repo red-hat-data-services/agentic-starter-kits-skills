@@ -21,7 +21,7 @@ Claude Code skills for [agentic-starter-kits](https://github.com/red-hat-data-se
 | test-tracing | Test MLflow tracing end-to-end by starting servers, sending requests, and verifying spans | `/agentic-starter-kits-skills:test-tracing <agent_path>` |
 | kagenti-deploy | Deploy A2A-compliant agents to OpenShift/Kubernetes with kagenti integration | `/agentic-starter-kits-skills:kagenti-deploy` |
 
-## Install
+## Install in Claude Code
 
 Add the marketplace and install the plugin:
 
@@ -29,6 +29,39 @@ Add the marketplace and install the plugin:
 claude plugin marketplace add red-hat-data-services/agentic-starter-kits-skills
 claude plugin install agentic-starter-kits-skills@agentic-starter-kits-skills
 ```
+
+This repository is a self-hosted Claude Code marketplace. Public community-catalog
+submission and review are handled through Anthropic's plugin submission process.
+
+## Install in OpenCode
+
+OpenCode consumes remote skill catalogs rather than Claude marketplaces. Add this
+to your OpenCode configuration:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "urls": [
+      "https://raw.githubusercontent.com/red-hat-data-services/agentic-starter-kits-skills/main/skills/"
+    ]
+  }
+}
+```
+
+Restart OpenCode after changing the configuration. Skills are available by their
+unscoped names, such as `fit-check` and `deploy-agents`. The catalog is defined
+by `skills/index.json`; increment a skill version when its files change so
+OpenCode refreshes its cache.
+
+For local contributor development, use `skills.paths` with an absolute path to
+the repository's `skills` directory instead.
+
+OpenCode does not support Claude's namespaced slash commands, Claude lifecycle
+hooks, or equivalent handling for `$ARGUMENTS`, `disable-model-invocation`, and
+`argument-hint`. Claude `PreToolUse`/`PostToolUse` evaluation gates are therefore
+not enforced by OpenCode; use normal OpenCode permissions for deployments and
+other destructive operations.
 
 ## Contributing
 
