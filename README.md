@@ -19,7 +19,6 @@ Claude Code skills for [agentic-starter-kits](https://github.com/red-hat-data-se
 | verify-traces | Verify tracing works correctly via code review and live trace testing | `/agentic-starter-kits-skills:verify-traces <agent_path>` |
 | review-tracing-code | Review tracing integration code for correctness against repo patterns | `/agentic-starter-kits-skills:review-tracing-code <agent_path>` |
 | test-tracing | Test MLflow tracing end-to-end by starting servers, sending requests, and verifying spans | `/agentic-starter-kits-skills:test-tracing <agent_path>` |
-| kagenti-deploy | Deploy A2A-compliant agents to OpenShift/Kubernetes with kagenti integration | `/agentic-starter-kits-skills:kagenti-deploy` |
 
 ## Install
 
@@ -63,7 +62,6 @@ rm -rf .claude/skills/add-manual-tracing
 rm -rf .claude/skills/verify-traces
 rm -rf .claude/skills/review-tracing-code
 rm -rf .claude/skills/test-tracing
-rm -rf .claude/skills/kagenti-deploy
 
 # From user-level skills (if any were installed locally)
 rm -rf ~/.claude/skills/deploy-agents
@@ -77,7 +75,6 @@ rm -rf ~/.claude/skills/add-manual-tracing
 rm -rf ~/.claude/skills/verify-traces
 rm -rf ~/.claude/skills/review-tracing-code
 rm -rf ~/.claude/skills/test-tracing
-rm -rf ~/.claude/skills/kagenti-deploy
 ```
 
 ## License
